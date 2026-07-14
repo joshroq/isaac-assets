@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LAUNCH_FILE="${UGV_BRINGUP_LAUNCH:-bringup_imu_ekf.launch.py}"
+PUB_ODOM_TF="${UGV_PUB_ODOM_TF:-false}"
+USE_RVIZ="${UGV_USE_RVIZ:-false}"
+
+exec /usr/local/bin/ugv-env \
+  ros2 launch ugv_bringup "${LAUNCH_FILE}" \
+  pub_odom_tf:="${PUB_ODOM_TF}" \
+  use_rviz:="${USE_RVIZ}" \
+  "$@"
+

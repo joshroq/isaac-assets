@@ -1,0 +1,31 @@
+# Generated ROS/colcon outputs
+build/
+install/
+log/
+**/build/
+**/install/
+**/log/
+
+# Python/cache output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local editor/OS files
+.DS_Store
+.vscode/
+.idea/
+*~
+.git-backups/
+
+# Isaac/ROS runtime files that should be regenerated locally
+*.bag
+*.db3
+*.mcap
+*.log
+
+# Keep source assets and USD files tracked; ignore only backup churn.
+*.bak
+*.bak-*

@@ -1,0 +1,65 @@
+%YAML:1.0
+#----------------------------------------------------------------------------------
+# ORB-SLAM3 RGB-D settings for the Isaac-Sim rover's front camera.
+#
+# Intrinsics match common/depth_camera_graph.py, which retunes the RSD455 to the
+# real OAK-D-Lite optics and publishes /oak at 640x480:
+#   focalLength 18.15 mm, horizontal aperture 24.95 mm, vertical aperture 18.71 mm
+#   fx = focalLength/horizAperture * width  = 18.15/24.95 * 640 ~= 465.6
+#   fy = focalLength/vertAperture  * height = 18.15/18.71 * 480 ~= 465.6
+#   cx = width/2 = 320,  cy = height/2 = 240
+# The sim uses a distortion-free pinhole, so all distortion coeffs are 0. Isaac
+# publishes depth as 32FC1 in METRES, so RGBD.DepthMapFactor = 1.0 (no scaling).
+#----------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+Camera1.fx: 465.6
+Camera1.fy: 465.6
+Camera1.cx: 320.0
+Camera1.cy: 240.0
+
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+Camera1.k3: 0.0
+
+Camera.width: 640
+Camera.height: 480
+Camera.fps: 30
+
+# Isaac publishes /oak/rgb/image_rect as rgb8 (RGB order).
+Camera.RGB: 1
+
+# Close/far depth threshold (baseline-times). OAK-D-Lite baseline ~75 mm; points
+# closer than b*ThDepth ~= 3 m are treated as reliable "close" stereo points.
+Stereo.ThDepth: 40.0
+Stereo.b: 0.075
+
+# Isaac depth is already in metres -> no scaling.
+RGBD.DepthMapFactor: 1.0
+
+#----------------------------------------------------------------------------------
+# ORB Extractor
+#----------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1200
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#----------------------------------------------------------------------------------
+# Viewer (used only if use_viewer:=true; kept so the settings parser is happy)
+#----------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0

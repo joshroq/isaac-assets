@@ -1,0 +1,13 @@
+[Unit]
+Description=Print Waveshare UGV ROS 2 environment
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__ROVER_USER__
+Environment=UGV_ENV_FILE=__ROVER_HOME__/isaac-assets/jetson_rover_setup/env/ros2_rover.env
+ExecStart=/usr/local/bin/ugv-env
+
+[Install]
+WantedBy=multi-user.target

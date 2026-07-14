@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE="${UGV_ENV_FILE:-$HOME/isaac-assets/jetson_rover_setup/env/ros2_rover.env}"
+
+if [[ ! -f /opt/ros/humble/setup.bash ]]; then
+  echo "Missing /opt/ros/humble/setup.bash" >&2
+  exit 1
+fi
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "Missing ${ENV_FILE}" >&2
+  exit 1
+fi
+
+source /opt/ros/humble/setup.bash
+set -a
+source "${ENV_FILE}"
+set +a
+
+if [[ -f "${UGV_WS}/install/setup.bash" ]]; then
+  source "${UGV_WS}/install/setup.bash"
+fi
+
+if [[ $# -eq 0 ]]; then
+  env | sort | grep -E '^(ROS_|RMW_|CYCLONEDDS|ISAAC_ASSETS_DIR|UGV_WS)='
+else
+  exec "$@"
+fi
+

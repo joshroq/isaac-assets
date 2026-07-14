@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+/usr/local/bin/ugv-env bash -lc '
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
+echo "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}"
+echo "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
+echo
+echo "Core topics:"
+ros2 topic list | sort | grep -E "^/(cmd_vel|clock|odom|scan|tf|tf_static|ugv_sim)" || true
+echo
+echo "cmd_vel publishers/subscribers:"
+ros2 topic info /cmd_vel || true
+echo
+echo "Real scan:"
+timeout 5 ros2 topic hz /scan || true
+echo
+echo "Sim scan, if Isaac is running:"
+timeout 5 ros2 topic hz /ugv_sim/scan || true
+'
+

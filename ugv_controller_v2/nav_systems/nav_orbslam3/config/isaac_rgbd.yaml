@@ -1,0 +1,81 @@
+%YAML:1.0
+#----------------------------------------------------------------------------------
+# ORB-SLAM3 RGB-D settings — OVERRIDE TEMPLATE, NOT THE DEFAULT PATH.
+#
+# By default the launch passes settings:="" and orbslam3_rgbd_bridge GENERATES its
+# settings from the live /ugv_sim/oak/rgb/camera_info topic, so the intrinsics always
+# match whatever the baked USD's RSD455 camera is actually publishing. That is the
+# right default here: the v2 rover references rsd455.usd from the Omniverse asset
+# server, so its fx/fy/resolution are not knowable from the repo — and a wrong fx is
+# the single most common cause of ORB-SLAM3 producing garbage.
+#
+# Use this file only to pin the settings by hand:
+#     navlaunch -v2 -orbslam3 settings:=<this file>
+#
+# BEFORE YOU DO, check the numbers against the real camera:
+#     ros2 topic echo /ugv_sim/oak/rgb/camera_info --once
+#     # k = [fx, 0, cx,  0, fy, cy,  0, 0, 1]
+# and copy fx/fy/cx/cy + width/height in below. The values here are inherited from the
+# v1 system (whose camera was retuned in Python to OAK-D-Lite optics at 640x480) and
+# are NOT guaranteed to match the v2 baked camera.
+#
+# Isaac publishes depth as 32FC1 in METRES, so RGBD.DepthMapFactor = 1.0 (no scaling).
+# The bridge hands ORB-SLAM3 a BGR image (cv_bridge converts whatever Isaac sends),
+# hence Camera.RGB: 0.
+#----------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+Camera1.fx: 465.6
+Camera1.fy: 465.6
+Camera1.cx: 320.0
+Camera1.cy: 240.0
+
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+Camera1.k3: 0.0
+
+Camera.width: 640
+Camera.height: 480
+
+# Keyframe cadence scales with this. Isaac's camera is much slower than a real 30 Hz
+# sensor, so keep it near the true /ugv_sim/oak/rgb/image_rect rate (ros2 topic hz).
+Camera.fps: 10
+
+# The bridge converts to BGR before TrackRGBD -> 0, not 1.
+Camera.RGB: 0
+
+# Close/far depth threshold (baseline-times). OAK-D-Lite baseline ~75 mm; points
+# closer than b*ThDepth ~= 3 m are treated as reliable "close" stereo points.
+Stereo.ThDepth: 40.0
+Stereo.b: 0.075
+
+# Isaac depth is already in metres -> no scaling.
+RGBD.DepthMapFactor: 1.0
+
+#----------------------------------------------------------------------------------
+# ORB Extractor
+#----------------------------------------------------------------------------------
+ORBextractor.nFeatures: 1200
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#----------------------------------------------------------------------------------
+# Viewer (used only if orbslam_viewer:=true; ORB-SLAM3's settings parser reads this
+# block unconditionally, so it must be present)
+#----------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LINEAR="${1:-0.05}"
+DURATION="${2:-1.0}"
+
+echo "Publishing /cmd_vel linear.x=${LINEAR} for ${DURATION}s."
+echo "This will move every robot on this ROS domain that subscribes to /cmd_vel."
+sleep 2
+
+/usr/local/bin/ugv-env bash -lc "
+timeout '${DURATION}' ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  \"{linear: {x: ${LINEAR}, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}\" \
+  --rate 10 || true
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
+  '{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}'
+"
+
