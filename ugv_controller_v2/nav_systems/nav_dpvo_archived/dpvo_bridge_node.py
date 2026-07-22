@@ -30,9 +30,11 @@ DPViewer, from DPVO-main/DPViewer — showing the live image, the tracked patche
 itself (DPVO.start_viewer() -> `from dpviewer import Viewer`) on the live CUDA tensors,
 and runs alongside RViz.
 
-RUNS IN THE nav_dpvo VENV, not system python: DPVO needs torch + CUDA. setup.sh builds
-`.venv` here with --system-site-packages so this node gets venv torch AND system rclpy;
-the launch file points the process at that interpreter.
+RUNS IN THE `dpvo` CONDA ENV, not system python: DPVO needs torch + CUDA + its compiled
+extensions. That env is python 3.10 — the same minor as ROS Humble — so /opt/ros's rclpy,
+tf2_ros and message packages import straight into it once ROS is sourced. So this stays
+one ordinary ROS node (conda torch + system rclpy in a single process); the launch file
+just points the process at that interpreter.
 """
 
 import os
@@ -43,6 +45,12 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+
+try:  # the concrete error raised when publishing into a torn-down context
+    from rclpy._rclpy_pybind11 import RCLError
+except ImportError:  # pragma: no cover - older rclpy layouts
+    class RCLError(Exception):
+        pass
 
 from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2, PointField
@@ -154,9 +162,9 @@ class DpvoBridge(Node):
         except Exception as e:
             self.get_logger().fatal(
                 f"Could not import DPVO/torch from '{dpvo_path}': {e}\n"
-                "nav_dpvo needs its venv (torch + CUDA + the compiled DPVO extensions).\n"
-                "Build it once with:  nav_systems/nav_dpvo/setup.sh\n"
-                "The launch file runs this node with that venv's interpreter.")
+                "nav_dpvo must run in the `dpvo` conda env (torch + CUDA + the compiled "
+                "DPVO extensions). Check it with:  nav_systems/nav_dpvo/setup.sh\n"
+                "The launch file runs this node with that env's interpreter.")
             raise
 
         if not torch.cuda.is_available():
@@ -201,6 +209,20 @@ class DpvoBridge(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
+
+        # map->odom is published on a fixed-rate timer (NOT only from the image callback),
+        # seeded to IDENTITY so the `map` frame exists from startup — exactly like
+        # nav_orbslam3. DPVO is monocular visual odometry: it only initialises once the
+        # camera has actually MOVED (dpvo.py drops frames with <2px motion until 8 frames
+        # accumulate). Until then it yields no pose, so without this seed nothing would
+        # publish map->odom, `map` would never exist, and RViz (fixed frame = map) plus the
+        # Nav2 global costmap would fail with "frame [map] does not exist" — you could not
+        # even see the robot or set a goal to drive it. With the seed, map==odom at start;
+        # once DPVO anchors (it forces map==odom at its init frame too) the handoff to the
+        # real transform is jump-free, and _update_localization just updates the matrix the
+        # timer already publishes.
+        self._map_odom = np.eye(4)   # latest map->odom; identity until DPVO takes over
+        self.create_timer(1.0 / 30.0, self._publish_tf)
 
         # ── I/O (best-effort sensor QoS to match Isaac's publishers) ─────────────
         sensor_qos = QoSProfile(depth=5)
@@ -347,10 +369,31 @@ class DpvoBridge(Node):
                 f"{self.odom_frame}.")
         T_map_odom = self._anchor @ T_map_odom
 
-        self._broadcast(T_map_odom, header.stamp)
+        # Hand the transform to the timer, which owns the map->odom broadcast. It has been
+        # publishing identity since startup; from here on it publishes DPVO's estimate.
+        self._map_odom = T_map_odom
         self._publish_points(header.stamp)
 
+    def _publish_tf(self):
+        """Broadcast the latest map->odom on a fixed-rate timer (identity until DPVO locks).
+
+        Runs even before DPVO has initialised so the `map` frame exists from startup — the
+        thing that lets RViz and the Nav2 costmaps come up and lets you drive the rover to
+        bootstrap DPVO in the first place. Stamped with the (sim) clock, not an image stamp.
+        """
+        if not rclpy.ok():
+            return
+        now = self.get_clock().now()
+        if now.nanoseconds == 0:
+            return   # sim clock (/clock) not received yet — a stamp of 0 is useless to Nav2
+        self._broadcast(self._map_odom, now.to_msg())
+
     def _broadcast(self, T, stamp):
+        # On Ctrl-C rclpy tears the context down while this callback may still be in
+        # flight; publishing then raises RCLError, which escapes the executor and aborts
+        # the process (DPVO/DPViewer C++ threads are still running). Just stop publishing.
+        if not rclpy.ok():
+            return
         t = TransformStamped()
         t.header.stamp = stamp
         t.header.frame_id = self.map_frame
@@ -365,7 +408,7 @@ class DpvoBridge(Node):
 
     def _publish_points(self, stamp):
         """Scaled + anchored DPVO patch points -> /dpvo/map_points (frame=map)."""
-        if self.cloud_pub.get_subscription_count() == 0 or self._anchor is None:
+        if not rclpy.ok() or self.cloud_pub.get_subscription_count() == 0 or self._anchor is None:
             return
         pts = self.slam.pg.points_.detach().cpu().numpy()[:int(self.slam.m)]
         if pts.size == 0:
@@ -400,10 +443,25 @@ def main():
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RCLError:
+        # Context torn down under a callback that was already publishing (Ctrl-C race).
+        pass
     finally:
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
+        # Hard-exit past DPViewer's GL/C++ static destructors. DPVO's own teardown
+        # (slam.terminate()) is NOT usable here: it calls viewer.join(), which blocks
+        # until the human closes the Pangolin window — fine for demo.py, a hang for a
+        # Ctrl-C'd ROS node. Without this, the exiting interpreter tears down the live
+        # Pangolin/CUDA threads and the process dies with "terminate called without an
+        # active exception" (a core dump on every shutdown). We are exiting anyway.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
 
 
 if __name__ == '__main__':

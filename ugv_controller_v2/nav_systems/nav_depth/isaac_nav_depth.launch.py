@@ -1,5 +1,14 @@
 """Nav system: DEPTH + LIDAR fusion (NO RGB) for the BAKED-GRAPH rover (v2).
 
+PART 1 STACK HEADER  (Part 1 #2 — LiDAR + raw depth Nav2)
+    Localization       : LiDAR SLAM (slam_toolbox)
+    Obstacle / costmap : LiDAR /scan + raw depth PointCloud2
+    RGB used           : no
+    Depth used         : yes
+    LiDAR used         : yes
+    IMU used           : no
+    Role               : geometry/depth baseline
+
 The appearance-independent sibling of nav_rgb. It navigates with the depth camera
 AND the lidar, but never the RGB image:
 
@@ -333,6 +342,17 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{"use_sim_time": use_sim_time}],
         output="screen",
     ))
+
+    # Raw depth-camera image in its own rqt_image_view window (on by default).
+    # Shows Isaac's raw depth image straight off the topic (rqt_image_view
+    # normalizes the 32FC1 depth for display). Disable with use_image_view:=false.
+    actions.append(Node(
+        condition=IfCondition(LaunchConfiguration("use_image_view")),
+        package="rqt_image_view", executable="rqt_image_view",
+        name="depth_raw_image_view",
+        arguments=[DEPTH_IMAGE_TOPIC],
+        output="screen",
+    ))
     return actions
 
 
@@ -394,5 +414,8 @@ def generate_launch_description():
                               description="Start upstream speed filter info servers"),
         DeclareLaunchArgument("use_rviz", default_value="true",
                               description="Launch RViz with the 3D depth navigation view"),
+        DeclareLaunchArgument("use_image_view", default_value="true",
+                              description="Open the raw depth-camera image in a separate "
+                                          "rqt_image_view window (needs ros-humble-rqt-image-view)"),
         OpaqueFunction(function=_launch_setup),
     ])

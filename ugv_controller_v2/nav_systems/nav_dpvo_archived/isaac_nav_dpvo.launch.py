@@ -1,4 +1,14 @@
-"""Nav system: DPVO (Deep Patch Visual Odometry) for the BAKED-GRAPH rover (ugv_controller_v2).
+"""ARCHIVED / INACTIVE — DPVO (Deep Patch Visual Odometry), ugv_controller_v2.
+
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │ NOT A PART 1 STACK. DPVO (learned monocular visual odometry) is paused    │
+    │ for the Part 1 SLAM/Nav2 fidelity baseline. It is preserved here for the  │
+    │ later policy-training/generalization / visual-odometry comparison work —  │
+    │ nothing is deleted (DPVO source, the conda env, and this bridge all stay).│
+    │ See ugv_controller_v2/README.md (Part 1 stacks) for the active list.      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+Nav system: DPVO (Deep Patch Visual Odometry) for the BAKED-GRAPH rover (ugv_controller_v2).
 
 The learned/monocular visual-SLAM sibling of nav_orbslam3. map->odom comes from DPVO run
 DIRECTLY from the source checkout in projects/slam_source/DPVO-main (dpvo_bridge_node.py
@@ -50,12 +60,13 @@ CONTRACT THIS LAUNCH EXPECTS ISAAC TO PUBLISH (see ugv_controller_v2/USD_CONTRAC
     DPVO then provides map->odom, visual_map_builder provides /map, Nav2 outputs /cmd_vel.
 
 PREREQUISITES
-  * ONE-TIME SETUP: ./setup.sh in this folder. DPVO is torch+CUDA, so it builds a venv
-    (--system-site-packages: venv torch + system rclpy), compiles DPVO's CUDA extensions,
-    fetches dpvo.pth, and builds DPViewer. This launch runs the bridge with that venv's
-    interpreter, so nothing else on the machine changes.
+  * The `dpvo` CONDA ENV (torch 2.7/cu128 + DPVO's compiled CUDA extensions + dpviewer).
+    It is python 3.10 — the same minor as ROS Humble — so rclpy/tf2_ros import straight
+    into it and the bridge runs as one ordinary ROS node there. Verify it any time with
+    ./setup.sh in this folder (it checks the env, the weights and the viewer; it does not
+    rebuild anything).
   * Build + source ugv_ws so `ugv_nav` is on the ament path.
-  * apt: ros-humble-navigation2 ros-humble-nav2-bringup + an NVIDIA driver & CUDA toolkit.
+  * apt: ros-humble-navigation2 ros-humble-nav2-bringup.
 
 RUN (Isaac running the baked rover elsewhere):
   navlaunch -v2 -dpvo                           # or, by hand:
@@ -99,9 +110,13 @@ _LOCALPLAN_CHOICES = ("teb", "dwa", "rpp", "mppi")
 
 THIS_DIR = Path(__file__).parent
 BRIDGE_NODE = str(THIS_DIR / "dpvo_bridge_node.py")
-# DPVO needs torch+CUDA, which is NOT in system python: setup.sh builds this venv with
-# --system-site-packages so the bridge gets venv torch AND system rclpy.
-VENV_PYTHON = str(THIS_DIR / ".venv" / "bin" / "python")
+# DPVO needs torch + CUDA + its compiled extensions, which system python does not have.
+# They live in the `dpvo` conda env (python 3.10 + torch 2.7/cu128 + dpviewer). That env
+# is python 3.10 — the SAME minor as ROS Humble — so /opt/ros's rclpy, tf2_ros and the
+# message packages import straight into it once ROS is sourced (verified). That means the
+# bridge runs as ONE ordinary ROS node in that interpreter: venv torch + system rclpy,
+# no IPC bridge, no second process. setup.sh checks all of this.
+DPVO_PYTHON = "/home/joshroq/miniforge3/envs/dpvo/bin/python"
 # Shared with nav_orbslam3: both visual systems emit a sparse cloud, not an occupancy grid.
 MAP_BUILDER = str(THIS_DIR.parent.parent / "common" / "visual_map_builder.py")
 DEFAULT_RVIZ_CONFIG = str(THIS_DIR / "isaac_dpvo_nav.rviz")
@@ -207,13 +222,15 @@ def _launch_setup(context, *args, **kwargs):
     _require_file(MAP_BUILDER, "visual_map_builder")
     _require_file(BRIDGE_NODE, "dpvo_bridge_node")
 
-    # The bridge must run in the venv setup.sh built (torch + the compiled DPVO CUDA
-    # extensions); system python has no torch. Fail with the fix, not an ImportError.
-    python_exe = _launch_value(context, "python_executable", VENV_PYTHON)
+    # The bridge must run in the `dpvo` conda env (torch + the compiled DPVO CUDA
+    # extensions + dpviewer); system python has no torch. Fail with the fix, not an
+    # ImportError 200 lines deep.
+    python_exe = _launch_value(context, "python_executable", DPVO_PYTHON)
     if not os.path.isfile(python_exe):
         raise RuntimeError(
-            f"nav_dpvo python environment not found: {python_exe}\n"
-            f"DPVO needs torch + CUDA + its compiled extensions. Build it once with:\n"
+            f"nav_dpvo python interpreter not found: {python_exe}\n"
+            f"DPVO needs torch + CUDA + its compiled extensions (the `dpvo` conda env).\n"
+            f"Check the environment with:\n"
             f"    {THIS_DIR / 'setup.sh'}\n"
             f"(or pass python_executable:=/path/to/python if you keep DPVO elsewhere)."
         )

@@ -53,11 +53,39 @@ source-convention `topicName` (`tools/normalize_ros2_topics.py` enforces this).
 | ROS_Camera/CameraInfoPublish | ugv_sim | `oak/rgb/camera_info` | `/ugv_sim/oak/rgb/camera_info` | `Camera_OmniVision_OV9782_Color` | ✅ |
 | ROS_Camera/DepthPublish | ugv_sim | `oak/stereo/image_raw` | `/ugv_sim/oak/stereo/image_raw` | `Camera_Pseudo_Depth` | ✅ |
 | ROS_Camera/DepthPclPublish | ugv_sim | `oak/stereo/depth_pcl` | `/ugv_sim/oak/stereo/depth_pcl` | `Camera_Pseudo_Depth` | ✅ (disabled) |
+| ROS_Camera/LeftRGBPublish | ugv_sim | `oak/left/image_rect` | `/ugv_sim/oak/left/image_rect` | `Camera_OmniVision_OV9782_Left` | ✅ (stereo, for cuVSLAM) |
+| ROS_Camera/LeftCameraInfoPublish | ugv_sim | `oak/left/camera_info` | `/ugv_sim/oak/left/camera_info` | `Camera_OmniVision_OV9782_Left` | ✅ (stereo, for cuVSLAM) |
+| ROS_Camera/RightRGBPublish | ugv_sim | `oak/right/image_rect` | `/ugv_sim/oak/right/image_rect` | `Camera_OmniVision_OV9782_Right` | ✅ (stereo, for cuVSLAM) |
+| ROS_Camera/RightCameraInfoPublish | ugv_sim | `oak/right/camera_info` | `/ugv_sim/oak/right/camera_info` | `Camera_OmniVision_OV9782_Right` | ✅ (stereo, for cuVSLAM) |
 | ROS_IMU/PublisherImu | ugv_sim | `imu/data` | `/ugv_sim/imu/data` | `Imu_Sensor` | ✅ |
+
+**Camera publish rate (`inputs:frameSkipCount`, measured 2026-07-14).** The camera helpers
+publish on rendered frames: `rate = render_rate / (frameSkipCount + 1)`, and
+`run_baked_rover.py` renders at 60 Hz sim time (`RENDERING_DT = 1/60`). The hardware
+reference is **30 fps** (`ugv_ws/.../ugv_vision/config/params.yaml` → `framerate: 30.0`;
+the OAK-D config sets none) — but that cap is **not the binding constraint here**, the GPU
+is. Measured sim-time rates on this box (RTX 5060 Ti, headless RayTracedLighting):
+
+| `frameSkipCount` | RGB | depth | camera_info |
+|---|---|---|---|
+| **0** (every render) — **current** | 17.1 fps | 11.4 fps | 34.3 fps |
+| 1 ("cap at 30") | 5.7 fps | 5.7 fps | 17.1 fps |
+
+Image delivery is bounded by RTX render/annotator throughput, so the cameras never approach
+60 fps and a skip count only throttles an already-starved stream (it discards renders that
+DID carry a fresh image). Rendering at 30 Hz instead (`RENDERING_DT = 1/30` + skip 0) is
+worse still (5.3 fps). So `frameSkipCount` is left at **0** — the closest achievable to
+30 fps without exceeding it. `tools/set_camera_fps.py --fps 30` re-applies the cap if the
+render pipeline ever gets fast enough to exceed 30 fps. Measure with sim-time stamp deltas,
+NOT `ros2 topic hz` (wall time; the sim runs at ~0.35x real time).
 
 Camera optical frames are the TF leaf names Isaac publishes under
 `front_camera_link/Realsense/RSD455/…` (`Camera_OmniVision_OV9782_Color` for RGB,
-`Camera_Pseudo_Depth` for depth) — NOT `oak`, which is not a frame in the tree.
+`Camera_Pseudo_Depth` for depth, `Camera_OmniVision_OV9782_{Left,Right}` for the
+cuVSLAM stereo pair) — NOT `oak`, which is not a frame in the tree. The Left/Right
+stereo publishers were added to the baked `ROS_Camera` graph so Isaac ROS cuVSLAM
+(stereo-only in 3.x) has a real stereo pair; cuVSLAM needs `base_link →
+Camera_OmniVision_OV9782_{Left,Right}` on TF for the rig extrinsics/baseline.
 Camera topics are ON by default; launch Isaac with `--no-camera-topics` only for
 lidar-only performance/debug sessions.
 TF frames covered (keep): `base_footprint→base_link`, `base_link→{base_lidar_link,

@@ -23,6 +23,7 @@ find_package(rclcpp REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -52,7 +53,7 @@ target_link_libraries(rgbd_odom_node
 )
 
 ament_target_dependencies(rgbd_odom_node
-  rclcpp cv_bridge sensor_msgs geometry_msgs message_filters tf2 tf2_ros tf2_eigen)
+  rclcpp cv_bridge sensor_msgs geometry_msgs nav_msgs message_filters tf2 tf2_ros tf2_eigen)
 
 # ORB-SLAM3's libraries live OUTSIDE the ament install tree (they are linked by absolute
 # path straight from the source checkout) and ament strips the build RPATH on install.

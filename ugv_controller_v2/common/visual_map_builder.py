@@ -16,16 +16,32 @@ the ground plane into a nav_msgs/OccupancyGrid, ray-tracing free space from the 
 origin (looked up via TF) to each point — the same obstacle/free/unknown semantics
 RTAB-Map's Grid/RayTracing produces.
 
+OPTIONAL 2D-LIDAR FUSION (`scan_topic`, off by default). A sparse visual cloud is a thin
+seed for the initial /map: ORB-SLAM3 / DPVO must see and triangulate enough features
+before the grid has any coverage, so early goals fail to plan. When `scan_topic` is set,
+this node ALSO folds the baked rover's 2D lidar /scan into the very same hit/miss grid —
+each finite return is an obstacle, each ray from the laser to its endpoint (or out to the
+trust range for no-returns) is carved free. That makes the initial mapping dense and
+metric from the first scan. Here the lidar shapes MAP GEOMETRY only — whether it also
+feeds LOCALIZATION is a separate choice each system makes elsewhere (nav_orbslam3 fuses it
+into map->odom via rf2o+EKF; nav_dpvo does not). nav_orbslam3 opts this builder in;
+nav_dpvo leaves it off (default '') and behaves exactly as before. The lidar sits in the
+map frame via map->odom -> ... -> laser_frame (from Isaac), looked up per scan.
+
 Keeping ONE projector shared (rather than baking a grid builder into each bridge — one of
 which is C++) mirrors the v1 tree, which keeps it in common/ for exactly this reason.
 Frame defaults are the v2 baked-USD ones (see ugv_controller_v2/USD_CONTRACT.md).
 
     in:   <cloud_topic>   sensor_msgs/PointCloud2   SLAM map points, frame_id=map
+    in:   <scan_topic>    sensor_msgs/LaserScan     2D lidar (optional, frame=laser_frame)
     out:  /map            nav_msgs/OccupancyGrid    (latched, transient_local)
 
 Run standalone (each visual launch does this, remapping cloud):
     python3 visual_map_builder.py --ros-args \
         -r cloud:=/orbslam3/map_points -p use_sim_time:=true   # or /dpvo/map_points
+    # fuse lidar too (nav_orbslam3):
+    python3 visual_map_builder.py --ros-args -r cloud:=/orbslam3/map_points \
+        -p scan_topic:=/ugv_sim/scan -p laser_frame:=base_lidar_link -p use_sim_time:=true
 """
 
 import math
@@ -37,7 +53,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import LaserScan, PointCloud2
 from sensor_msgs_py import point_cloud2
 
 import tf2_ros
@@ -64,6 +80,14 @@ class VisualMapBuilder(Node):
         self.declare_parameter('occupied_thresh', 0.60)     # hit/(hit+miss) -> occupied
         self.declare_parameter('free_thresh', 0.30)         # below -> free
         self.declare_parameter('publish_period', 1.0)       # s
+        # ── Optional 2D-lidar fusion (off unless scan_topic is set) ───────────────
+        # When set, /scan is folded into the same grid for a dense metric initial map
+        # (see module docstring). laser_frame is the 2D lidar's TF frame; scan_max_range
+        # is how far a lidar return is trusted (>= the visual max_ray_range, since the
+        # lidar stays metric far past where VO points get noisy).
+        self.declare_parameter('scan_topic', '')
+        self.declare_parameter('laser_frame', 'base_lidar_link')
+        self.declare_parameter('scan_max_range', 12.0)
 
         gp = self.get_parameter
         self.cloud_topic = gp('cloud_topic').value
@@ -76,6 +100,9 @@ class VisualMapBuilder(Node):
         self.max_ray = float(gp('max_ray_range').value)
         self.occ_thresh = float(gp('occupied_thresh').value)
         self.free_thresh = float(gp('free_thresh').value)
+        self.scan_topic = gp('scan_topic').value
+        self.laser_frame = gp('laser_frame').value
+        self.scan_max_range = float(gp('scan_max_range').value)
 
         # Grid centred on the map origin: cell (i,j) covers world
         #   x = origin_x + j*res,  y = origin_y + i*res.
@@ -98,28 +125,54 @@ class VisualMapBuilder(Node):
         self.sub = self.create_subscription(
             PointCloud2, self.cloud_topic, self._on_cloud, cloud_qos)
 
+        # Optional lidar input, same best-effort sensor QoS as Isaac's LaserScanPublish.
+        self.scan_sub = None
+        if self.scan_topic:
+            scan_qos = QoSProfile(depth=5)
+            scan_qos.reliability = QoSReliabilityPolicy.BEST_EFFORT
+            self.scan_sub = self.create_subscription(
+                LaserScan, self.scan_topic, self._on_scan, scan_qos)
+
         map_qos = QoSProfile(depth=1)
         map_qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
         map_qos.reliability = QoSReliabilityPolicy.RELIABLE
         self.pub = self.create_publisher(OccupancyGrid, gp('map_topic').value, map_qos)
 
         self.create_timer(float(gp('publish_period').value), self._publish_map)
+        scan_info = (f", + lidar {self.scan_topic} (frame {self.laser_frame}, "
+                     f"<= {self.scan_max_range} m)" if self.scan_topic else "")
         self.get_logger().info(
             f"visual_map_builder: {self.cloud_topic} (frame {self.map_frame}) -> "
             f"{gp('map_topic').value}  [{self.n}x{self.n} @ {self.res} m, "
-            f"obstacle band {self.z_min}-{self.z_max} m, sensor {self.sensor_frame}]")
+            f"obstacle band {self.z_min}-{self.z_max} m, sensor {self.sensor_frame}"
+            f"{scan_info}]")
 
-    # ── Cloud -> hit/miss accumulation ────────────────────────────────────────────
-    def _sensor_origin_cell(self):
-        """Camera position in the map frame -> (i, j) cell, or None if TF not ready."""
+    # ── Cloud / scan -> hit/miss accumulation ─────────────────────────────────────
+    def _sensor_origin_cell(self, frame):
+        """Position of `frame` in the map frame -> (i, j) cell, or None if TF unready."""
         try:
             tf = self.tf_buffer.lookup_transform(
-                self.map_frame, self.sensor_frame, rclpy.time.Time())
+                self.map_frame, frame, rclpy.time.Time())
         except (tf2_ros.LookupException, tf2_ros.ExtrapolationException,
                 tf2_ros.ConnectivityException):
             return None
         t = tf.transform.translation
         return self._world_to_cell(t.x, t.y)
+
+    def _map_pose(self, frame):
+        """(tx, ty, yaw) of `frame` in the map frame, or None if TF not ready. The 2D
+        pose is all a planar lidar needs to place its scan in the map frame."""
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                self.map_frame, frame, rclpy.time.Time())
+        except (tf2_ros.LookupException, tf2_ros.ExtrapolationException,
+                tf2_ros.ConnectivityException):
+            return None
+        t = tf.transform.translation
+        q = tf.transform.rotation
+        yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                         1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+        return (t.x, t.y, yaw)
 
     def _world_to_cell(self, x, y):
         j = int((x - self.origin_x) / self.res)
@@ -128,8 +181,18 @@ class VisualMapBuilder(Node):
             return (i, j)
         return None
 
+    def _accumulate_ray(self, oi, oj, ci, cj, obstacle):
+        """Carve free space from the sensor cell (oi,oj) to the endpoint (ci,cj), then
+        mark the endpoint an obstacle (hit) or free (miss). Shared by cloud and scan."""
+        for (fi, fj) in self._bresenham(oi, oj, ci, cj)[:-1]:
+            self.miss[fi, fj] += 1
+        if obstacle:
+            self.hits[ci, cj] += 1
+        else:
+            self.miss[ci, cj] += 1
+
     def _on_cloud(self, msg: PointCloud2):
-        origin = self._sensor_origin_cell()
+        origin = self._sensor_origin_cell(self.sensor_frame)
         if origin is None:
             return  # no camera pose in map yet -> can't ray-trace this frame
         oi, oj = origin
@@ -147,14 +210,44 @@ class VisualMapBuilder(Node):
             if math.hypot((ci - oi) * self.res, (cj - oj) * self.res) > self.max_ray:
                 continue
 
+            # z-band: below z_min is floor, above z_max is ceiling/noise -> traversable.
             obstacle = self.z_min <= float(z) <= self.z_max
-            # Free-space carving: everything between the camera and the point is free.
-            for (fi, fj) in self._bresenham(oi, oj, ci, cj)[:-1]:
-                self.miss[fi, fj] += 1
-            if obstacle:
-                self.hits[ci, cj] += 1
-            else:
-                self.miss[ci, cj] += 1  # floor / low return -> traversable
+            self._accumulate_ray(oi, oj, ci, cj, obstacle)
+
+    def _on_scan(self, msg: LaserScan):
+        """Fold a 2D lidar scan into the grid (opt-in; see module docstring). The laser's
+        map pose comes from map->odom (visual SLAM) -> ... -> laser_frame (Isaac), so the
+        scan lands in the same map frame as the cloud. Every finite in-range return is an
+        obstacle; no-return beams carve free space out to the trust range."""
+        pose = self._map_pose(self.laser_frame)
+        if pose is None:
+            return  # no laser pose in map yet (visual SLAM hasn't seeded map->odom)
+        tx, ty, yaw = pose
+        origin = self._world_to_cell(tx, ty)
+        if origin is None:
+            return
+        oi, oj = origin
+
+        cos_y, sin_y = math.cos(yaw), math.sin(yaw)
+        r_max = min(self.scan_max_range, float(msg.range_max))
+        r_min = float(msg.range_min)
+        angle = float(msg.angle_min)
+        for r in msg.ranges:
+            a = angle
+            angle += float(msg.angle_increment)
+            finite = math.isfinite(r) and r_min <= r <= r_max
+            # A real return is an obstacle at its endpoint; a no-return (inf / out of
+            # range) still tells us the beam's path up to r_max is clear -> carve free.
+            reach = r if finite else r_max
+            # Endpoint in the laser frame, rotated by yaw and shifted to the map frame.
+            lx = reach * math.cos(a)
+            ly = reach * math.sin(a)
+            cell = self._world_to_cell(tx + cos_y * lx - sin_y * ly,
+                                       ty + sin_y * lx + cos_y * ly)
+            if cell is None:
+                continue
+            ci, cj = cell
+            self._accumulate_ray(oi, oj, ci, cj, obstacle=finite)
 
     @staticmethod
     def _bresenham(i0, j0, i1, j1):

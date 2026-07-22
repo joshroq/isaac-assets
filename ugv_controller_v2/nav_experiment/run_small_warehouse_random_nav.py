@@ -181,7 +181,7 @@ def main() -> int:
                 "  isaacpy nav_experiment/run_random_small_warehouse.py "
                 f"--random-seed {args.random_seed if args.random_seed is not None else 1234} "
                 f"--random-obstacle-count {args.random_obstacle_count} "
-                f"--obstacle-style {getattr(args, 'obstacle_style', 'primitives')} "
+                f"--obstacle-style {getattr(args, 'obstacle_style', 'props')} "
                 f"--random-min-spacing {args.random_min_spacing} "
                 f"--random-x-min {args.random_x_min} --random-x-max {args.random_x_max} "
                 f"--random-y-min {args.random_y_min} --random-y-max {args.random_y_max}"

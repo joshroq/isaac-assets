@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# rover-bringup — launch the Waveshare UGV ROS 2 driver with the Discovery
+# Server environment applied, so the desktop can see /cmd_vel and the rover's
+# real /scan,/odom,/imu,/tf topics.
+#
+# Env knobs (with defaults matching the existing jetson_rover_setup):
+#   UGV_BRINGUP_LAUNCH  (default bringup_imu_ekf.launch.py)
+#   UGV_PUB_ODOM_TF     (default false)
+#   UGV_USE_RVIZ        (default false)
+#   ROVER_COMMS_MODE    (near|far; default from rover-mode / far)
+set -eo pipefail
+
+LAUNCH_FILE="${UGV_BRINGUP_LAUNCH:-bringup_imu_ekf.launch.py}"
+PUB_ODOM_TF="${UGV_PUB_ODOM_TF:-false}"
+USE_RVIZ="${UGV_USE_RVIZ:-false}"
+
+ROVER_ENV="$(command -v rover-env || echo /usr/local/bin/rover-env)"
+
+exec "${ROVER_ENV}" \
+  ros2 launch ugv_bringup "${LAUNCH_FILE}" \
+    pub_odom_tf:="${PUB_ODOM_TF}" \
+    use_rviz:="${USE_RVIZ}" \
+    "$@"

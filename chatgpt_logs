@@ -1,0 +1,819 @@
+Help me configure ros networking now. I always work on ROS_DOMAIN_ID = 0 on my linux desktop so run with that
+Pasted text.txt
+Document
+joshroq@josh-desktop:~$ ip maddr show dev wlp7s0
+3:	wlp7s0
+	link  01:00:5e:00:00:01 users 3
+	link  01:00:5e:7f:00:01 users 2
+	link  01:00:5e:00:00:fb users 2
+	link  01:80:c2:00:00:00 users 2
+	link  01:80:c2:00:00:03 users 2
+	link  01:80:c2:00:00:0e users 2
+	inet  225.0.0.1
+	inet  224.0.0.1
+	inet  239.255.0.1 users 16
+	inet  224.0.0.251 users 3
+	inet6 ff02::1
+	inet6 ff01::1
+joshroq@josh-desktop:~$ 
+
+joshroq@josh-desktop:~$ ros2 multicast receive --help
+usage: ros2 multicast receive [-h]
+
+Receive a single UDP multicast packet
+
+options:
+  -h, --help  show this help message and exit
+
+These are the results
+Pasted text.txt
+Document
+This is the results from the ros2 multicast send
+
+The rover is transmitting correctly.
+
+Your capture shows:
+
+wlP1p1s0 Out ... 10.168.168.115.54984 > 239.255.0.1.7400
+
+That is Fast DDS discovery traffic leaving the rover over the correct Wi-Fi interface.
+
+It also shows:
+
+wlP1p1s0 Out ... 10.168.168.115.44073 > 225.0.0.1.49150
+
+That is the ros2 multicast send test leaving the rover correctly.
+
+But the desktop capture did not show either of those rover multicast packets. Therefore:
+
+The router/access point is dropping or failing to forward multicast from the rover to the desktop.
+
+This is no longer a Jetson routing, ROS environment, or Wi-Fi-interface-selection problem.
+
+Best immediate fix for the demo
+
+Use unicast DDS discovery instead of depending on Wi-Fi multicast.
+
+Your fixed addresses are:
+
+Desktop: 10.168.168.240
+Rover:   10.168.168.115
+
+Create a Fast DDS profile on both machines.
+
+On the desktop
+nano ~/fastdds_rover.xml
+
+Paste:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+
+    <participant profile_name="rover_unicast" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <metatrafficUnicastLocatorList>
+            <locator>
+              <udpv4>
+                <address>10.168.168.240</address>
+              </udpv4>
+            </locator>
+          </metatrafficUnicastLocatorList>
+
+          <initialPeersList>
+            <locator>
+              <udpv4>
+                <address>10.168.168.115</address>
+              </udpv4>
+            </locator>
+          </initialPeersList>
+        </builtin>
+
+        <defaultUnicastLocatorList>
+          <locator>
+            <udpv4>
+              <address>10.168.168.240</address>
+            </udpv4>
+          </locator>
+        </defaultUnicastLocatorList>
+
+        <useBuiltinTransports>true</useBuiltinTransports>
+      </rtps>
+    </participant>
+
+  </profiles>
+</dds>
+
+Add this to the bottom of the desktop ~/.bashrc:
+
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/joshroq/fastdds_rover.xml
+
+Reload:
+
+source ~/.bashrc
+On the rover
+nano ~/fastdds_rover.xml
+
+Paste:
+
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+
+    <participant profile_name="rover_unicast" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <metatrafficUnicastLocatorList>
+            <locator>
+              <udpv4>
+                <address>10.168.168.115</address>
+              </udpv4>
+            </locator>
+          </metatrafficUnicastLocatorList>
+
+          <initialPeersList>
+            <locator>
+              <udpv4>
+                <address>10.168.168.240</address>
+              </udpv4>
+            </locator>
+          </initialPeersList>
+        </builtin>
+
+        <defaultUnicastLocatorList>
+          <locator>
+            <udpv4>
+              <address>10.168.168.115</address>
+            </udpv4>
+          </locator>
+        </defaultUnicastLocatorList>
+
+        <useBuiltinTransports>true</useBuiltinTransports>
+      </rtps>
+    </participant>
+
+  </profiles>
+</dds>
+
+Add to the rover’s ~/.bashrc:
+
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+
+Also add the same line to /usr/local/bin/start_ugv_driver.sh:
+
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+Restart all ROS processes
+
+On both machines:
+
+ros2 daemon stop
+pkill -f _ros2_daemon 2>/dev/null || true
+
+On the rover, restart the driver:
+
+pkill -f ugv_driver
+/usr/local/bin/start_ugv_driver.sh
+
+On the desktop, fully close and reopen Isaac Sim so it inherits the Fast DDS profile.
+
+Then check:
+
+ros2 node list --no-daemon
+ros2 topic info /cmd_vel --verbose
+
+You should now see /ugv_driver from the desktop even though multicast forwarding is broken.
+
+Important: the multicast test may still fail
+
+This command may continue to fail:
+
+ros2 multicast receive
+
+That is acceptable after configuring direct unicast peers. The multicast utility specifically tests multicast; it does not test whether DDS unicast discovery works.
+
+The meaningful tests become:
+
+ros2 node list --no-daemon
+ros2 topic info /cmd_vel --verbose
+
+and a talker/listener test.
+
+Router-side alternative
+
+You could also try changing router settings involving:
+
+IGMP snooping
+wireless multicast forwarding
+multicast filtering
+multicast enhancement
+multicast-to-unicast conversion
+client isolation
+
+But for a rover demo, explicit DDS peers or a dedicated travel router will be more predictable.
+
+Your logs now prove the full diagnosis:
+
+Rover creates multicast packet
+        ↓
+Rover transmits it through wlP1p1s0
+        ↓
+Access point fails to forward it
+        ↓
+Desktop never receives it
+
+Use the unicast Fast DDS profile for the immediate desktop–rover–Isaac Sim demonstration.
+
+joshroq@josh-desktop:~$ ros2 node list --no-daemon
+ros2 topic info /cmd_vel --verbose
+Unknown topic '/cmd_vel'
+joshroq@josh-desktop:~$ ros2 topic info /cmd_vel --verbose
+Unknown topic '/cmd_vel'
+joshroq@josh-desktop:~$ ros2 node list --no-daemon
+joshroq@josh-desktop:~$ 
+
+Desktop is detecting nothing now even though isaacsim is running
+
+The Fast DDS profile is the likely cause. It changed the desktop’s default DDS transport behavior, and Isaac Sim is no longer visible even locally.
+
+First restore the last working ROS configuration, then we can reintroduce unicast more carefully.
+
+1. Disable the custom Fast DDS profile on the desktop
+
+Run:
+
+unset FASTRTPS_DEFAULT_PROFILES_FILE
+
+Check:
+
+echo "$FASTRTPS_DEFAULT_PROFILES_FILE"
+
+It should print a blank line.
+
+Remove or comment out this line in ~/.bashrc:
+
+nano ~/.bashrc
+
+Change:
+
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/joshroq/fastdds_rover.xml
+
+to:
+
+# export FASTRTPS_DEFAULT_PROFILES_FILE=/home/joshroq/fastdds_rover.xml
+
+Reload:
+
+source ~/.bashrc
+
+Verify:
+
+printenv | grep FASTRTPS
+
+There should be no output.
+
+2. Stop stale DDS and ROS processes
+
+Close Isaac Sim completely first.
+
+Then run on the desktop:
+
+ros2 daemon stop
+pkill -f _ros2_daemon 2>/dev/null || true
+pkill -f fastdds 2>/dev/null || true
+
+Do not use pkill -f ros2, because that could terminate unrelated ROS processes.
+
+3. Verify the normal desktop ROS environment
+echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
+echo "ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY"
+echo "RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION"
+echo "FASTRTPS_DEFAULT_PROFILES_FILE=$FASTRTPS_DEFAULT_PROFILES_FILE"
+
+Expected:
+
+ROS_DOMAIN_ID=0
+ROS_LOCALHOST_ONLY=0
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+FASTRTPS_DEFAULT_PROFILES_FILE=
+4. Test ROS locally before reopening Isaac Sim
+
+Terminal 1:
+
+ros2 run demo_nodes_cpp talker
+
+Terminal 2:
+
+ros2 node list --no-daemon
+ros2 topic list --no-daemon
+
+You should see:
+
+/talker
+/chatter
+
+If you do, local ROS discovery is restored.
+
+Stop the talker with Ctrl+C.
+
+5. Relaunch Isaac Sim from the configured terminal
+
+Launch Isaac Sim from a terminal that has the correct environment:
+
+source ~/.bashrc
+
+echo "$ROS_DOMAIN_ID"
+echo "$ROS_LOCALHOST_ONLY"
+echo "$RMW_IMPLEMENTATION"
+
+cd ~/Applications/isaacsim
+./isaac-sim.sh
+
+Use your actual Isaac Sim installation path if it differs.
+
+Start the simulation timeline, then check in another desktop terminal:
+
+ros2 node list --no-daemon
+ros2 topic list --no-daemon
+ros2 topic info /cmd_vel --verbose
+
+You should again see the Isaac Sim /cmd_vel subscribers.
+
+6. Disable the custom profile on the rover too
+
+For now, remove it from the rover so both systems return to the known baseline.
+
+On the rover:
+
+unset FASTRTPS_DEFAULT_PROFILES_FILE
+nano ~/.bashrc
+
+Comment out:
+
+# export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+
+Also edit:
+
+sudo nano /usr/local/bin/start_ugv_driver.sh
+
+Comment out or remove:
+
+# export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+
+Restart the driver:
+
+pkill -f ugv_driver
+/usr/local/bin/start_ugv_driver.sh
+
+Confirm on the rover:
+
+ros2 node list --no-daemon
+ros2 topic info /cmd_vel --verbose
+Why the profile caused this
+
+The profile was marked as the default participant profile and replaced normal DDS locator behavior. Because Isaac Sim and your shell were not necessarily using identical participant and profile handling, the desktop lost visibility of even its own Isaac Sim nodes.
+
+The safe recovery state is:
+
+No FASTRTPS_DEFAULT_PROFILES_FILE
+ROS_DOMAIN_ID=0
+ROS_LOCALHOST_ONLY=0
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+
+Once Isaac Sim is visible locally again, do not immediately re-enable that XML file. For your demonstration, the more dependable solution will be either:
+
+a dedicated router that correctly forwards multicast, or
+a Fast DDS Discovery Server configured explicitly for the desktop and rover.
+
+The immediate goal is to restore Isaac Sim discovery first by unsetting FASTRTPS_DEFAULT_PROFILES_FILE and relaunching Isaac Sim.
+
+joshroq@josh-desktop:~$ ros2 node list --no-daemon
+ros2 topic list --no-daemon
+ros2 topic info /cmd_vel --verbose
+/robot_state_publisher
+/clock
+/diagnostics
+/joint_states
+/map
+/orbslam3/map_points
+/parameter_events
+/robot_description
+/rosout
+/rsp_tf_static_unused
+/rsp_tf_unused
+/tf
+/tf_static
+/ugv_sim/scan
+Unknown topic '/cmd_vel'
+joshroq@josh-desktop:~$ 
+
+On desktop it is still not seeing cmd_vel with isaacsim running again
+
+Isaac Sim’s ROS 2 bridge is working—you can see /clock, /joint_states, /tf, and /ugv_sim/scan. The missing /cmd_vel means the Subscribe Twist drive graph is not currently active, is disabled, or is using another topic name.
+
+1. Start the simulation timeline
+
+In Isaac Sim, press Play.
+
+Then rerun:
+
+ros2 node list --no-daemon
+ros2 topic list --no-daemon | grep -E 'cmd_vel|velocity|twist'
+
+Some OmniGraph ROS nodes do not become active until the timeline is playing.
+
+2. Inspect the drive OmniGraph
+
+In Isaac Sim’s Stage panel, locate the graph that previously appeared as:
+
+_World_ugv_rover_Drive_Graph_SkidSteer_Controller_SubscribeTwist
+
+Likely path:
+
+/World/ugv_rover/Drive_Graph
+
+Open it in:
+
+Window → Visual Scripting → Action Graph
+
+Select the ROS2 Subscribe Twist node and verify:
+
+Topic Name: cmd_vel
+
+or:
+
+Topic Name: /cmd_vel
+
+Use /cmd_vel for clarity.
+
+Also verify:
+
+Domain ID: 0
+
+If the node has a namespace field, leave it blank unless intentionally using a namespace.
+
+3. Confirm the graph has an execution trigger
+
+The graph needs an execution connection such as:
+
+On Playback Tick
+        ↓
+ROS2 Subscribe Twist
+        ↓
+Break Vector3
+        ↓
+Differential/Skid-Steer Controller
+
+Check that On Playback Tick is connected to the subscriber node’s execution input.
+
+If the execution wire is missing, the subscriber exists visually but never starts.
+
+4. Check the graph and nodes are enabled
+
+Select the drive graph prim and inspect its properties.
+
+Make sure:
+
+Enabled: true
+
+Also check the individual ROS2 Subscribe Twist node is not disabled, muted, or bypassed.
+
+If there are two different drive graphs, use only one. Previously Isaac Sim exposed two subscribers:
+
+/World/ugv_rover/Drive_Graph/SkidSteer_Controller/SubscribeTwist
+/ROS2_Graphs/ROS_Cmd_Vel/ros2_subscribe_twist
+
+For a clean setup, keep the subscriber that is actually connected to the rover’s skid-steer controller and disable the duplicate.
+
+5. Check whether the graph changed to a namespace
+
+Your current topics include:
+
+/ugv_sim/scan
+
+That suggests some simulation topics use the ugv_sim namespace. The velocity subscriber may now be configured as:
+
+/ugv_sim/cmd_vel
+
+Search all topics:
+
+ros2 topic list --no-daemon | grep -Ei 'cmd|vel|twist|ugv'
+
+Also check:
+
+ros2 topic info /ugv_sim/cmd_vel --verbose
+
+If /ugv_sim/cmd_vel exists, you can either:
+
+change the Isaac Sim subscriber back to /cmd_vel, or
+remap keyboard control:
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+  --ros-args -r cmd_vel:=/ugv_sim/cmd_vel
+
+For controlling both the physical and simulated rover simultaneously, Isaac Sim should subscribe to the shared topic:
+
+/cmd_vel
+6. Force the graph to reinitialize
+
+With the simulation stopped:
+
+Select the ROS2 Subscribe Twist node.
+Change its topic temporarily to /test_cmd_vel.
+Press Play.
+Stop.
+Change it back to /cmd_vel.
+Press Play again.
+
+Then run:
+
+ros2 topic list --no-daemon | grep cmd_vel
+ros2 topic info /cmd_vel --verbose
+7. Verify from Isaac Sim’s terminal log
+
+Launch Isaac Sim from a configured terminal:
+
+source ~/.bashrc
+
+echo "$ROS_DOMAIN_ID"
+echo "$ROS_LOCALHOST_ONLY"
+echo "$RMW_IMPLEMENTATION"
+
+cd ~/Applications/isaacsim
+./isaac-sim.sh
+
+Expected environment:
+
+0
+0
+rmw_fastrtps_cpp
+
+Watch the terminal for OmniGraph or ROS errors when pressing Play, especially messages containing:
+
+SubscribeTwist
+ROS2 Context
+OmniGraph
+Drive_Graph
+invalid topic
+Correct desktop result
+
+Once the drive graph is active, before starting keyboard control:
+
+ros2 topic info /cmd_vel --verbose
+
+should show at least:
+
+Publisher count: 0
+Subscription count: 1
+
+with an Isaac Sim subscriber.
+
+After starting keyboard control:
+
+ros2 run teleop_twist_keyboard teleop_twist_keyboard \
+  --ros-args -r cmd_vel:=/cmd_vel
+
+it should show:
+
+Publisher count: 1
+Subscription count: 1
+
+The immediate issue is inside the Isaac Sim drive OmniGraph, not the desktop ROS installation—the bridge is clearly functioning, but the Subscribe Twist drive node is not active.
+
+## Copy-paste brief for ChatGPT (rover side)
+
+> **Task: replace the broken Fast DDS profile on the rover with a corrected symmetric unicast-peers profile.**
+>
+> The current /home/jroqu005/fastdds_rover.xml overrides metatrafficUnicastLocatorList and defaultUnicastLocatorList to a single address and lists only one peer. That kills multicast **and** localhost discovery and isolates local nodes. Replace its **entire contents** with the file below (do not keep any of the old <metatrafficUnicastLocatorList> / <defaultUnicastLocatorList> blocks):
+>
+> 
+xml
+> <?xml version="1.0" encoding="UTF-8"?>
+> <dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+>   <profiles>
+>     <participant profile_name="rover_peers" is_default_profile="true">
+>       <rtps>
+>         <builtin>
+>           <initialPeersList>
+>             <locator><udpv4><address>127.0.0.1</address></udpv4></locator>
+>             <locator><udpv4><address>10.168.168.240</address></udpv4></locator>
+>             <locator><udpv4><address>10.168.168.115</address></udpv4></locator>
+>           </initialPeersList>
+>         </builtin>
+>       </rtps>
+>     </participant>
+>   </profiles>
+> </dds>
+>
+
+>
+> Then:
+>
+> 1. Re-enable the env var (uncomment) in ~/.bashrc **and** in /usr/local/bin/start_ugv_driver.sh:
+>    export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+> 2. Confirm the rover uses the same baseline everywhere: ROS_DOMAIN_ID=0, RMW_IMPLEMENTATION=rmw_fastrtps_cpp, and **ROS_LOCALHOST_ONLY unset or 0** (if it's 1, cross-machine will never work).
+> 3. Restart the driver so it picks up the new env: pkill -f ugv_driver then /usr/local/bin/start_ugv_driver.sh.
+> 4. Verify locally on the rover first: ros2 node list and ros2 topic info /cmd_vel --verbose should still show the rover's own /cmd_vel subscriber. If local discovery on the rover breaks after applying this, the file wasn't replaced cleanly (an old locator-override block was left in).
+> 5. The IP 10.168.168.115 in the file must equal the rover's actual WiFi IP (ip -brief addr), and 10.168.168.240 is the desktop. If either IP is different, fix them and make the two files match. These IPs must be stable (reserve DHCP leases).
+
+##
+
+Run the following directly on the rover.
+
+1. Replace the Fast DDS profile completely
+cp /home/jroqu005/fastdds_rover.xml \
+   /home/jroqu005/fastdds_rover.xml.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+
+cat > /home/jroqu005/fastdds_rover.xml <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <participant profile_name="rover_peers" is_default_profile="true">
+      <rtps>
+        <builtin>
+          <initialPeersList>
+            <locator><udpv4><address>127.0.0.1</address></udpv4></locator>
+            <locator><udpv4><address>10.168.168.240</address></udpv4></locator>
+            <locator><udpv4><address>10.168.168.115</address></udpv4></locator>
+          </initialPeersList>
+        </builtin>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>
+EOF
+
+cat /home/jroqu005/fastdds_rover.xml
+
+Confirm that the displayed file contains no:
+
+<metatrafficUnicastLocatorList>
+
+or:
+
+<defaultUnicastLocatorList>
+
+You can check automatically:
+
+grep -nE 'metatrafficUnicastLocatorList|defaultUnicastLocatorList' \
+  /home/jroqu005/fastdds_rover.xml
+
+That command should produce no output.
+
+2. Verify the rover’s actual Wi-Fi IP
+ip -brief addr
+
+The rover’s active Wi-Fi interface should show:
+
+10.168.168.115/...
+
+A more focused command is:
+
+ip -4 -brief addr | grep -vE 'lo|docker|br-|virbr'
+
+If the rover IP is not 10.168.168.115, replace that address in the XML:
+
+sed -i 's/10\.168\.168\.115/ACTUAL_ROVER_IP/' \
+  /home/jroqu005/fastdds_rover.xml
+
+Replace ACTUAL_ROVER_IP with the real address before running it.
+
+3. Configure ~/.bashrc
+
+Remove conflicting ROS/Fast DDS entries and append one clean baseline block:
+
+sed -i \
+  -e '/^[[:space:]]*#*[[:space:]]*export FASTRTPS_DEFAULT_PROFILES_FILE=/d' \
+  -e '/^[[:space:]]*#*[[:space:]]*export ROS_DOMAIN_ID=/d' \
+  -e '/^[[:space:]]*#*[[:space:]]*export RMW_IMPLEMENTATION=/d' \
+  -e '/^[[:space:]]*#*[[:space:]]*export ROS_LOCALHOST_ONLY=/d' \
+  ~/.bashrc
+
+cat >> ~/.bashrc <<'EOF'
+
+# ROS 2 Fast DDS peer discovery configuration
+export ROS_DOMAIN_ID=0
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export ROS_LOCALHOST_ONLY=0
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+EOF
+
+source ~/.bashrc
+
+Confirm:
+
+printf 'ROS_DOMAIN_ID=%s\n' "$ROS_DOMAIN_ID"
+printf 'RMW_IMPLEMENTATION=%s\n' "$RMW_IMPLEMENTATION"
+printf 'ROS_LOCALHOST_ONLY=%s\n' "$ROS_LOCALHOST_ONLY"
+printf 'FASTRTPS_DEFAULT_PROFILES_FILE=%s\n' \
+  "$FASTRTPS_DEFAULT_PROFILES_FILE"
+
+Expected output:
+
+ROS_DOMAIN_ID=0
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+ROS_LOCALHOST_ONLY=0
+FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+4. Correct the driver startup script
+
+First back it up:
+
+sudo cp /usr/local/bin/start_ugv_driver.sh \
+  /usr/local/bin/start_ugv_driver.sh.backup.$(date +%Y%m%d_%H%M%S)
+
+Inspect it:
+
+sudo sed -n '1,240p' /usr/local/bin/start_ugv_driver.sh
+
+Remove existing conflicting environment assignments:
+
+sudo sed -i \
+  -e '/^[[:space:]]*#*[[:space:]]*export FASTRTPS_DEFAULT_PROFILES_FILE=/d' \
+  -e '/^[[:space:]]*#*[[:space:]]*export ROS_DOMAIN_ID=/d' \
+  -e '/^[[:space:]]*#*[[:space:]]*export RMW_IMPLEMENTATION=/d' \
+  -e '/^[[:space:]]*#*[[:space:]]*export ROS_LOCALHOST_ONLY=/d' \
+  /usr/local/bin/start_ugv_driver.sh
+
+Insert the environment configuration immediately after the script’s shebang:
+
+sudo sed -i '1a\
+export ROS_DOMAIN_ID=0\
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp\
+export ROS_LOCALHOST_ONLY=0\
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml' \
+  /usr/local/bin/start_ugv_driver.sh
+
+Verify the beginning of the file:
+
+sudo head -n 15 /usr/local/bin/start_ugv_driver.sh
+
+It should begin similarly to:
+
+#!/bin/bash
+export ROS_DOMAIN_ID=0
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export ROS_LOCALHOST_ONLY=0
+export FASTRTPS_DEFAULT_PROFILES_FILE=/home/jroqu005/fastdds_rover.xml
+
+Also make sure the script is executable:
+
+sudo chmod +x /usr/local/bin/start_ugv_driver.sh
+5. Restart ROS 2 discovery and the rover driver
+ros2 daemon stop 2>/dev/null || true
+pkill -f ugv_driver 2>/dev/null || true
+sleep 2
+
+/usr/local/bin/start_ugv_driver.sh
+
+If that script remains attached to the terminal, open a second terminal for verification. If it normally runs in the background, continue in the same terminal.
+
+6. Verify locally on the rover
+
+In a terminal with the same environment:
+
+source ~/.bashrc
+ros2 daemon stop 2>/dev/null || true
+ros2 daemon start
+sleep 2
+
+ros2 node list --no-daemon
+ros2 topic list --no-daemon
+ros2 topic info /cmd_vel --verbose
+
+For /cmd_vel, the important result is:
+
+Subscription count: 1
+
+or another nonzero subscription count, with the rover driver listed as a subscriber.
+
+You can also run:
+
+ros2 topic info /cmd_vel --verbose | grep -E \
+  'Subscription count|Node name|Topic type|Endpoint type'
+7. Final configuration audit
+echo '=== Rover IPs ==='
+ip -4 -brief addr
+
+echo '=== XML peer addresses ==='
+grep -oP '(?<=<address>)[^<]+' /home/jroqu005/fastdds_rover.xml
+
+echo '=== Current shell ==='
+env | grep -E \
+  '^(ROS_DOMAIN_ID|RMW_IMPLEMENTATION|ROS_LOCALHOST_ONLY|FASTRTPS_DEFAULT_PROFILES_FILE)='
+
+echo '=== Driver script ==='
+sudo grep -nE \
+  'ROS_DOMAIN_ID|RMW_IMPLEMENTATION|ROS_LOCALHOST_ONLY|FASTRTPS_DEFAULT_PROFILES_FILE' \
+  /usr/local/bin/start_ugv_driver.sh
+
+echo '=== Bashrc ==='
+grep -nE \
+  'ROS_DOMAIN_ID|RMW_IMPLEMENTATION|ROS_LOCALHOST_ONLY|FASTRTPS_DEFAULT_PROFILES_FILE' \
+  ~/.bashrc
+
+The XML peer list should show exactly:
+
+127.0.0.1
+10.168.168.240
+10.168.168.115
+
+Once local /cmd_vel discovery is confirmed, the desktop must use the same domain, RMW implementation, localhost setting, and a corresponding peer profile containing both stable machine IPs.

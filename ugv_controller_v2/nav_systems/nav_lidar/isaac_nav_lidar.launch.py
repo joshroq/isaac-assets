@@ -1,5 +1,14 @@
 """Nav system: LIDAR-ONLY SLAM (slam_toolbox) for the BAKED-GRAPH rover.
 
+PART 1 STACK HEADER  (Part 1 #1 — LiDAR-only Nav2)
+    Localization       : LiDAR SLAM (slam_toolbox)
+    Obstacle / costmap : LiDAR /scan
+    RGB used           : no
+    Depth used         : no
+    LiDAR used         : yes
+    IMU used           : no
+    Role               : geometry-only baseline
+
 This is the ROS 2 side for driving jetson_rover_v2.usd with the real rover's own
 `ugv_nav` Nav2 stack. It includes upstream
 `ugv_nav/launch/nav_bringup/nav2_bringup.launch.py` with `use_slam:=True`, so

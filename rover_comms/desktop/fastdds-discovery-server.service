@@ -1,0 +1,28 @@
+# Optional: run the desktop Discovery Server as a user service so it is always
+# up (survives closing the terminal; restarts on crash).
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp rover_comms/desktop/fastdds-discovery-server.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now fastdds-discovery-server.service
+#   loginctl enable-linger "$USER"     # keep it running when logged out
+#
+# Status / logs:
+#   systemctl --user status fastdds-discovery-server.service
+#   journalctl --user -u fastdds-discovery-server.service -f
+#
+# NOTE: adjust the ExecStart path if you cloned the repo elsewhere.
+[Unit]
+Description=Fast DDS Discovery Server (desktop <-> rover ROS 2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/joshroq/projects/isaac-assets/rover_comms/desktop/discovery_server.sh
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

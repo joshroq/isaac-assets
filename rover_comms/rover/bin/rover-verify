@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# rover-verify — rover-side diagnostics for the desktop<->rover link.
+# Run on the rover after the desktop discovery server is up and the rover
+# driver (rover-bringup) is running.
+set -uo pipefail
+
+ROVER_ENV="$(command -v rover-env || echo /usr/local/bin/rover-env)"
+# shellcheck disable=SC1090
+eval "$("${ROVER_ENV}" bash -lc 'echo export ROS_DOMAIN_ID=$ROS_DOMAIN_ID RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY ROS_DISCOVERY_SERVER=$ROS_DISCOVERY_SERVER ROS_SUPER_CLIENT=$ROS_SUPER_CLIENT ROVER_COMMS_MODE=$ROVER_COMMS_MODE')" 2>/dev/null
+
+pass(){ echo "  [ OK ] $*"; }
+fail(){ echo "  [FAIL] $*"; }
+
+echo "== 1. Environment =="
+[ "${ROS_DOMAIN_ID:-}" = "0" ] && pass "ROS_DOMAIN_ID=0" || fail "ROS_DOMAIN_ID='${ROS_DOMAIN_ID:-unset}' (desktop uses 0)"
+[ "${RMW_IMPLEMENTATION:-}" = "rmw_fastrtps_cpp" ] && pass "RMW=rmw_fastrtps_cpp" || fail "RMW='${RMW_IMPLEMENTATION:-unset}' (Cyclone won't talk to desktop)"
+[ "${ROS_LOCALHOST_ONLY:-}" = "0" ] && pass "ROS_LOCALHOST_ONLY=0" || fail "ROS_LOCALHOST_ONLY='${ROS_LOCALHOST_ONLY:-unset}' (must be 0)"
+echo "  mode=${ROVER_COMMS_MODE:-?}  ROS_DISCOVERY_SERVER=${ROS_DISCOVERY_SERVER:-unset}"
+
+SERVER_IP="${ROS_DISCOVERY_SERVER%%:*}"
+SERVER_PORT="${ROS_DISCOVERY_SERVER##*:}"
+
+echo "== 2. Reach the desktop / discovery server =="
+if [ -n "${SERVER_IP}" ]; then
+  if ping -c1 -W2 "${SERVER_IP}" >/dev/null 2>&1; then pass "ping desktop ${SERVER_IP}"; else fail "cannot ping ${SERVER_IP}"; fi
+  # UDP discovery port reachability (best-effort; nc may be unavailable)
+  if command -v nc >/dev/null 2>&1; then
+    if nc -zu -w2 "${SERVER_IP}" "${SERVER_PORT}" >/dev/null 2>&1; then pass "UDP ${SERVER_IP}:${SERVER_PORT} reachable"; else echo "  [warn] UDP ${SERVER_IP}:${SERVER_PORT} probe inconclusive (normal for UDP)"; fi
+  fi
+else
+  fail "ROS_DISCOVERY_SERVER not set"
+fi
+
+echo "== 3. Tailscale (far mode) =="
+if [ "${ROVER_COMMS_MODE:-}" = "far" ]; then
+  if command -v tailscale >/dev/null 2>&1; then
+    ip4="$(tailscale ip -4 2>/dev/null | head -1)"
+    [ -n "$ip4" ] && pass "rover on tailnet as ${ip4}" || fail "tailscale installed but not connected (run tailscale_up.sh)"
+  else
+    fail "tailscale not installed (far mode needs it — see TAILSCALE.md)"
+  fi
+else
+  echo "  [skip] near mode"
+fi
+
+echo "== 4. ROS graph =="
+echo "  own driver /cmd_vel subscriber:"
+"${ROVER_ENV}" bash -lc 'timeout 6 ros2 topic info /cmd_vel --verbose 2>/dev/null | grep -E "Subscription count|Node name" | sed "s/^/    /"' || echo "    (none — is rover-bringup running?)"
+echo "  topics visible:"
+"${ROVER_ENV}" bash -lc 'timeout 6 ros2 topic list 2>/dev/null | grep -E "cmd_vel|scan|odom|imu|tf" | sed "s/^/    /"' || echo "    (none)"
+echo
+echo "If the desktop is connected you will ALSO see desktop nodes in:"
+echo "  rover-env ros2 node list"

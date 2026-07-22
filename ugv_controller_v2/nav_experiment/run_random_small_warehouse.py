@@ -52,7 +52,7 @@ def default_generated_usd(args) -> Path:
         "small_warehouse_random_"
         f"seed-{seed}_"
         f"count-{max(0, args.random_obstacle_count)}_"
-        f"style-{getattr(args, 'obstacle_style', 'primitives')}_"
+        f"style-{getattr(args, 'obstacle_style', 'props')}_"
         f"spacing-{_slug_number(max(0.0, args.random_min_spacing))}_"
         f"x-{_slug_number(args.random_x_min)}-{_slug_number(args.random_x_max)}_"
         f"y-{_slug_number(args.random_y_min)}-{_slug_number(args.random_y_max)}.usd"

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# rover-env — source the rover comms environment, then run a command (or print
+# the environment if no command is given).  The rover analog of ugv-env.
+#
+#   rover-env                       # print the resolved ROS/discovery env
+#   rover-env ros2 topic list       # run a command with that env
+#   rover-env near ros2 node list   # force a mode for this invocation
+#
+# Locates rover_env.sh from (first hit wins):
+#   $ROVER_COMMS_ENV, /usr/local/lib/rover_comms/rover_env.sh,
+#   <this script>/../rover_env.sh, ~/isaac-assets/rover_comms/rover/rover_env.sh
+set -eo pipefail
+
+_find_env() {
+  local c
+  for c in \
+    "${ROVER_COMMS_ENV:-}" \
+    "/usr/local/lib/rover_comms/rover_env.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/rover_env.sh" \
+    "$HOME/isaac-assets/rover_comms/rover/rover_env.sh"; do
+    [ -n "$c" ] && [ -f "$c" ] && { printf '%s\n' "$c"; return 0; }
+  done
+  return 1
+}
+
+ENV_FILE="$(_find_env)" || { echo "rover-env: cannot find rover_env.sh" >&2; exit 1; }
+
+# optional leading mode arg (near|far)
+MODE_ARG=""
+case "${1:-}" in near|far) MODE_ARG="$1"; shift ;; esac
+
+# Always pass the mode explicitly: `source FILE` with no args would otherwise
+# make the sourced script inherit THIS script's positional params (the command
+# to run), which rover_env.sh would misread as a mode.
+# shellcheck disable=SC1090
+source "$ENV_FILE" "${MODE_ARG:-}"
+
+if [ "$#" -eq 0 ]; then
+  env | sort | grep -E '^(ROS_|RMW_|ROVER_COMMS_|DESKTOP_)' || true
+else
+  exec "$@"
+fi

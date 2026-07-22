@@ -1,4 +1,4 @@
-"""Nav system: LiDAR + RGB-D RTAB-Map for the BAKED-GRAPH rover (ugv_controller_v2).
+"""Nav system: RTAB-Map RGB-D + LiDAR + Nav2 for the BAKED-GRAPH rover.
 
 The RGB-D counterpart of ugv_controller_v2/nav_systems/nav_lidar. It is built the
 same way nav_lidar is: it launches the **real rover's own ugv_ws source** and only
@@ -287,6 +287,16 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{"use_sim_time": use_sim_time}],
         output="screen",
     ))
+
+    # Raw RGB-camera image in its own rqt_image_view window (on by default).
+    # Disable with use_image_view:=false.
+    actions.append(Node(
+        condition=IfCondition(LaunchConfiguration("use_image_view")),
+        package="rqt_image_view", executable="rqt_image_view",
+        name="rgb_raw_image_view",
+        arguments=["/ugv_sim/oak/rgb/image_rect"],
+        output="screen",
+    ))
     return actions
 
 
@@ -319,5 +329,8 @@ def generate_launch_description():
                               description="Nav2 log level"),
         DeclareLaunchArgument("use_rviz", default_value="true",
                               description="Launch RViz with the 3D navigation view"),
+        DeclareLaunchArgument("use_image_view", default_value="true",
+                              description="Open the raw RGB-camera image in a separate "
+                                          "rqt_image_view window (needs ros-humble-rqt-image-view)"),
         OpaqueFunction(function=_launch_setup),
     ])
