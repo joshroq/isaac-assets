@@ -47,12 +47,22 @@ rover_comms/
 ├── desktop/
 │   ├── discovery_server.sh           ← run this on the desktop (the server)
 │   ├── desktop_env.sh                ← source in desktop ROS terminals
+│   ├── drive_rover.sh                ← teleop the real rover (watchdog-safe)
 │   └── fastdds-discovery-server.service  ← optional: run server as a service
 ├── rover/
-│   ├── rover_env.sh                  ← copy to rover; source it (near|far)
-│   └── ROVER_SETUP.md                ← copy-paste brief to apply on the rover
+│   ├── bootstrap.sh                  ← one-command rover setup after git clone
+│   ├── install_rover_comms.sh        ← idempotent installer
+│   ├── rover_env.sh                  ← the env (near|far); source it
+│   ├── bin/                          ← rover-{env,mode,bringup,verify,
+│   │                                    teleop-test,cmdvel-watchdog,wifi-join}
+│   ├── watchdog/cmd_vel_watchdog.py  ← rover-side deadman (stops on link loss)
+│   ├── campus_wifi.md                ← campus uplink (captive portal/enterprise)
+│   ├── tailscale_up.sh               ← join the tailnet (far mode)
+│   ├── systemd/rover-comms-bringup.service
+│   └── ROVER_SETUP.md                ← full rover walkthrough
 └── verify/
-    └── verify_desktop.sh             ← desktop-side sanity check
+    ├── verify_desktop.sh             ← desktop-side sanity check
+    └── link_monitor.sh               ← live link/RTT/graph monitor
 ```
 
 Shared config baked into the scripts (edit if your IPs change):
@@ -106,6 +116,47 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 ---
 
+## Remote operation (rover on campus, desktop at home): method & safety
+
+The far setup is the same Discovery Server over Tailscale — **near and far are
+ROS-identical**, so develop with physical access first, then relocate.
+
+**Phase 0 — at home, co-located (do ~90% here).**
+- Put the rover on Tailscale (`rover/tailscale_up.sh`) and confirm your lifeline:
+  `ssh <user>@<rover-100.x>` works over the tunnel. This is how you fix anything
+  once the rover is remote.
+- Prove the *real* far path on the bench: `rover-mode far` so the rover targets
+  the desktop's **Tailscale** IP (routes through the tunnel, not the LAN). If
+  telemetry + on-blocks driving work here, campus is just the uplink question.
+- Test the **deadman**: `rover-bringup` starts a rover-side cmd_vel watchdog
+  (`watchdog/cmd_vel_watchdog.py`). Drive on blocks, then `sudo tailscale down`
+  mid-command → wheels stop; `tailscale up` → control resumes.
+
+**Phase 1 — campus, telemetry only.** Rover joins campus WiFi as a client
+(`rover/campus_wifi.md`), Tailscale reconnects, driver service comes up. From
+home: `rover-verify`, `ros2 topic echo /scan|/odom`, `verify/link_monitor.sh`.
+**No autonomous motion** until rates/latency look good.
+
+**Phase 2 — campus, supervised driving / nav.** Wheels on blocks first, then
+floor driving with a **live camera feed + an on-campus spotter**, strict speed
+caps. For Nav2, run the nav stack **on the rover** and send goals from home —
+do **not** stream raw sensors/camera over the WAN.
+
+### Safety essentials (remote driving)
+- **Deadman is mandatory:** the Waveshare driver has no cmd_vel timeout, so the
+  rover-side watchdog is what stops a runaway on link loss. Keep it enabled.
+- **Drive via the watchdog:** teleop from the desktop with
+  `desktop/drive_rover.sh` — it publishes `/cmd_vel_remote`, which the watchdog
+  passes through to `/cmd_vel` (and zeroes on staleness). Publishing straight to
+  `/cmd_vel` from the desktop bypasses the deadman — don't, for remote driving.
+- **On blocks first, spotter always**, per `jetson_rover_setup` ("keep the rover
+  on blocks while testing").
+- **Clean WAN DDS (optional):** if far discovery works but `ros2 topic echo`
+  hangs, set `ROVER_COMMS_DDS_WHITELIST=1` (rover) and `DESKTOP_DDS_WHITELIST=1`
+  (desktop) before sourcing the env — restricts DDS to loopback + Tailscale.
+
+---
+
 ## Isaac Sim + real rover at the same time (optional mirrored control)
 
 Isaac normally uses plain local multicast (works on one machine). To ALSO drive
@@ -122,11 +173,14 @@ don't need the real rover, launch Isaac normally (no discovery env) as before.
   didn't source `desktop_env.sh` (check `echo $ROS_DISCOVERY_SERVER`).
 - **Rover can't be pinged in far mode:** Tailscale down or rover has no internet
   uplink (AP-only). See `TAILSCALE.md`.
-- **Discovery works but `ros2 topic echo` hangs (far mode):** the participants
-  advertised LAN locators that the other side can't reach. Restrict DDS to the
-  Tailscale interface with an interface whitelist. Create `~/fastdds_tailscale.xml`
-  on each machine listing loopback + that machine's own `100.x` IP under
-  `<interfaceWhiteList>`, and `export FASTRTPS_DEFAULT_PROFILES_FILE=...` to it.
+- **Discovery works but `ros2 topic echo` hangs (far mode):** participants
+  advertised LAN locators the other side can't reach. Restrict DDS to loopback +
+  Tailscale: set `ROVER_COMMS_DDS_WHITELIST=1` (rover) / `DESKTOP_DDS_WHITELIST=1`
+  (desktop) before sourcing the env — the env scripts auto-generate a safe
+  whitelist-only `fastdds_tailscale.xml` from each machine's live `100.x` IP.
+- **Rover keeps moving after the link drops:** the cmd_vel watchdog isn't
+  running or you drove via `/cmd_vel` directly. Use `desktop/drive_rover.sh`
+  (publishes `/cmd_vel_remote`) and confirm `rover-bringup` logged the watchdog.
   (Whitelist only — do **not** re-add `initialPeersList` / locator overrides.)
 - **Nothing connects at all:** confirm both ends match `ROS_DOMAIN_ID=0`,
   `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `ROS_LOCALHOST_ONLY=0`. A Waveshare

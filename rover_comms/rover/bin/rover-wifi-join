@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# rover-wifi-join — create a persistent, auto-connecting WiFi profile on the
+# rover so a headless Jetson rejoins the network (e.g. campus) on boot.
+#
+#   rover-wifi-join <SSID> [PASSWORD]            # WPA2-Personal
+#   rover-wifi-join --enterprise <SSID> <IDENTITY> <PASSWORD>   # WPA2-Enterprise
+#
+# Best run at home BEFORE taking the rover to campus (if you have the creds),
+# so the uplink is proven. For WPA2-Enterprise (common on campus) you may also
+# need a CA cert / specific EAP method — see campus_wifi.md.
+set -eo pipefail
+
+if ! command -v nmcli >/dev/null 2>&1; then
+  echo "nmcli (NetworkManager) not found. Install it or configure wpa_supplicant" >&2
+  echo "manually — see campus_wifi.md." >&2
+  exit 1
+fi
+
+if [ "${1:-}" = "--enterprise" ]; then
+  SSID="${2:?usage: rover-wifi-join --enterprise <SSID> <IDENTITY> <PASSWORD>}"
+  IDENTITY="${3:?missing IDENTITY}"
+  PASSWORD="${4:?missing PASSWORD}"
+  echo "[rover-wifi-join] creating WPA2-Enterprise (PEAP/MSCHAPv2) profile '${SSID}'"
+  sudo nmcli connection add type wifi con-name "${SSID}" ssid "${SSID}" \
+    wifi-sec.key-mgmt wpa-eap \
+    802-1x.eap peap 802-1x.phase2-auth mschapv2 \
+    802-1x.identity "${IDENTITY}" 802-1x.password "${PASSWORD}" \
+    connection.autoconnect yes
+  echo "[rover-wifi-join] NOTE: if campus requires a CA certificate, add e.g.:"
+  echo "  sudo nmcli connection modify \"${SSID}\" 802-1x.ca-cert /path/to/ca.pem"
+else
+  SSID="${1:?usage: rover-wifi-join <SSID> [PASSWORD]}"
+  PASSWORD="${2:-}"
+  if [ -n "${PASSWORD}" ]; then
+    echo "[rover-wifi-join] creating WPA2-Personal profile '${SSID}'"
+    sudo nmcli connection add type wifi con-name "${SSID}" ssid "${SSID}" \
+      wifi-sec.key-mgmt wpa-psk wifi-sec.psk "${PASSWORD}" \
+      connection.autoconnect yes
+  else
+    echo "[rover-wifi-join] creating OPEN profile '${SSID}' (no password)"
+    sudo nmcli connection add type wifi con-name "${SSID}" ssid "${SSID}" \
+      connection.autoconnect yes
+  fi
+fi
+
+echo "[rover-wifi-join] bringing it up now…"
+sudo nmcli connection up "${SSID}" || {
+  echo "[rover-wifi-join] could not connect now (out of range?). It will"
+  echo "                  auto-connect when the network is available."; }
+
+echo "[rover-wifi-join] current connectivity:"
+nmcli -t -f STATE general 2>/dev/null || true
+echo "  (captive portal? open a browser / register the Jetson's MAC — see campus_wifi.md)"

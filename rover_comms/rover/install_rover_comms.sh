@@ -43,12 +43,14 @@ if [ -f /usr/local/bin/start_ugv_driver.sh ] && \
 fi
 
 # --- 2. install env + helper scripts ----------------------------------------
-echo "-- installing rover_env.sh -> ${LIB_DIR}"
+echo "-- installing rover_env.sh + watchdog node -> ${LIB_DIR}"
 sudo install -d "${LIB_DIR}"
 sudo install -m 0644 "${SCRIPT_DIR}/rover_env.sh" "${LIB_DIR}/rover_env.sh"
+sudo install -m 0644 "${SCRIPT_DIR}/watchdog/cmd_vel_watchdog.py" "${LIB_DIR}/cmd_vel_watchdog.py"
 
 echo "-- installing helpers -> ${BIN_DIR}"
-for s in rover-env rover-mode rover-bringup rover-verify rover-teleop-test; do
+for s in rover-env rover-mode rover-bringup rover-verify rover-teleop-test \
+         rover-cmdvel-watchdog rover-wifi-join; do
   sudo install -m 0755 "${SCRIPT_DIR}/bin/${s}" "${BIN_DIR}/${s}"
   echo "   ${BIN_DIR}/${s}"
 done

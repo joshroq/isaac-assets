@@ -109,6 +109,27 @@ rover-env ros2 node list               # desktop nodes visible = link is up
 rover-teleop-test 0.05 0.0 1.0         # 0.05 m/s forward, 1 s, then stop
 ```
 
+Remote driving from the desktop goes through the **deadman watchdog**:
+`rover-bringup` auto-starts `cmd_vel_watchdog.py`, and the desktop drives with
+`rover_comms/desktop/drive_rover.sh` (publishes `/cmd_vel_remote`, which the
+watchdog passes to `/cmd_vel` and zeroes if the link drops). Keep the rover on
+blocks for the first remote drive. Disable the watchdog only for local-only work
+with `ROVER_CMDVEL_WATCHDOG=0`.
+
+---
+
+## 6. Remote (far) essentials
+
+- **Lifeline:** confirm `ssh <user>@<rover-100.x>` works over Tailscale before
+  the rover leaves — it's how you fix anything remotely.
+- **Uplink:** the rover needs internet at campus (its `ugv` AP has none). Join
+  campus WiFi as a client: `rover-wifi-join "<SSID>" "<password>"` (or
+  `--enterprise`). Captive portals / WPA2-Enterprise / client isolation are
+  covered in `campus_wifi.md`. Prove it at home if you can.
+- **Clean WAN DDS (optional):** if far discovery works but `ros2 topic echo`
+  hangs, `export ROVER_COMMS_DDS_WHITELIST=1` before sourcing the env (and
+  `DESKTOP_DDS_WHITELIST=1` on the desktop). See `../README.md` → Remote operation.
+
 ---
 
 ## Notes / gotchas
@@ -121,7 +142,7 @@ rover-teleop-test 0.05 0.0 1.0         # 0.05 m/s forward, 1 s, then stop
 - **IPs drift?** Override without editing scripts: put
   `DESKTOP_TAILSCALE_IP=...` / `DESKTOP_LAN_IP=...` in
   `~/.config/rover_comms/desktop_ips.env`. Reserve static DHCP leases for near mode.
-- **Far discovery works but `ros2 topic echo` hangs:** participants advertised
-  unreachable LAN locators. Restrict DDS to the Tailscale interface with an
-  interface-whitelist XML (loopback + the rover's own `100.x` only) — see the
-  Troubleshooting section of `../README.md`.
+- **Far discovery works but `ros2 topic echo` hangs:** set
+  `ROVER_COMMS_DDS_WHITELIST=1` before sourcing the env — `rover_env.sh`
+  auto-generates a safe whitelist-only profile (loopback + the rover's live
+  `100.x`). See the Remote-operation section of `../README.md`.

@@ -82,10 +82,51 @@ export ROS_DISCOVERY_SERVER="${_rc_desktop_ip}:${DISCOVERY_SERVER_PORT}"
 # Let ros2 CLI (topic/node list) see everything the server knows.
 export ROS_SUPER_CLIENT=TRUE
 
-# The old initial-peers XML is what isolated nodes — make sure it is NOT set.
-unset FASTRTPS_DEFAULT_PROFILES_FILE 2>/dev/null || true
+# Optional (far mode only): restrict DDS to loopback + this machine's Tailscale
+# interface so participants don't advertise unreachable LAN locators over the
+# WAN tunnel (symptom: discovery works but `ros2 topic echo` hangs). This is a
+# WHITELIST ONLY — no locator/peer overrides — so it is safe, unlike the old
+# initial-peers profile. Enable with ROVER_COMMS_DDS_WHITELIST=1.
+if [ "${_rc_mode}" = "far" ] && [ "${ROVER_COMMS_DDS_WHITELIST:-0}" = "1" ]; then
+  _rc_ts_ip="$(tailscale ip -4 2>/dev/null | head -1)"
+  if [ -n "${_rc_ts_ip}" ]; then
+    mkdir -p "${_rc_cfg_dir}"
+    _rc_xml="${_rc_cfg_dir}/fastdds_tailscale.xml"
+    cat > "${_rc_xml}" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<dds xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <profiles>
+    <transport_descriptors>
+      <transport_descriptor>
+        <transport_id>ts_udp</transport_id>
+        <type>UDPv4</type>
+        <interfaceWhiteList>
+          <address>127.0.0.1</address>
+          <address>${_rc_ts_ip}</address>
+        </interfaceWhiteList>
+      </transport_descriptor>
+    </transport_descriptors>
+    <participant profile_name="ts_whitelist" is_default_profile="true">
+      <rtps>
+        <userTransports><transport_id>ts_udp</transport_id></userTransports>
+        <useBuiltinTransports>false</useBuiltinTransports>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>
+XML
+    export FASTRTPS_DEFAULT_PROFILES_FILE="${_rc_xml}"
+    echo "[rover_env] DDS interface whitelist ON (127.0.0.1 + ${_rc_ts_ip})"
+  else
+    unset FASTRTPS_DEFAULT_PROFILES_FILE 2>/dev/null || true
+    echo "[rover_env] WARN: DDS whitelist requested but no Tailscale IP; skipping"
+  fi
+else
+  # The old initial-peers XML is what isolated nodes — make sure it is NOT set.
+  unset FASTRTPS_DEFAULT_PROFILES_FILE 2>/dev/null || true
+fi
 
-unset _rc_cfg_dir _rc_mode _rc_desktop_ip
+unset _rc_cfg_dir _rc_mode _rc_desktop_ip _rc_ts_ip _rc_xml
 
 echo "[rover_env] mode=${ROVER_COMMS_MODE}  ROS_DISCOVERY_SERVER=${ROS_DISCOVERY_SERVER}"
 echo "[rover_env] ROS_DOMAIN_ID=${ROS_DOMAIN_ID}  RMW=${RMW_IMPLEMENTATION}  LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"

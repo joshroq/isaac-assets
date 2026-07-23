@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# rover-cmdvel-watchdog — run the cmd_vel deadman node under the rover env.
+# Stops the rover if remote /cmd_vel_remote commands go stale (WAN drop).
+#
+#   rover-cmdvel-watchdog
+#   rover-cmdvel-watchdog --ros-args -p cmd_timeout:=0.3
+#
+# rover-bringup starts this automatically (set ROVER_CMDVEL_WATCHDOG=0 to skip).
+set -eo pipefail
+
+_find_py() {
+  local c
+  for c in \
+    "${ROVER_COMMS_WATCHDOG:-}" \
+    "/usr/local/lib/rover_comms/cmd_vel_watchdog.py" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/watchdog/cmd_vel_watchdog.py" \
+    "$HOME/isaac-assets/rover_comms/rover/watchdog/cmd_vel_watchdog.py"; do
+    [ -n "$c" ] && [ -f "$c" ] && { printf '%s\n' "$c"; return 0; }
+  done
+  return 1
+}
+
+PY="$(_find_py)" || { echo "rover-cmdvel-watchdog: cannot find cmd_vel_watchdog.py" >&2; exit 1; }
+ROVER_ENV="$(command -v rover-env || echo /usr/local/bin/rover-env)"
+
+exec "${ROVER_ENV}" python3 "${PY}" "$@"

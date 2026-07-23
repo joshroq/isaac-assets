@@ -15,6 +15,9 @@ Environment=XDG_CONFIG_HOME=__ROVER_HOME__/.config
 ExecStart=/usr/local/bin/rover-bringup
 Restart=on-failure
 RestartSec=3
+# kill the whole cgroup on stop so the cmd_vel watchdog child dies too
+KillMode=control-group
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
