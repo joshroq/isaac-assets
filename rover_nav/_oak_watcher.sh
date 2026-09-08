@@ -1,0 +1,2 @@
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_sudo.sh"
+( rsudo bash -c 'for i in $(seq 1 400); do for d in /sys/bus/usb/devices/*/idVendor; do if [ "$(cat "$d" 2>/dev/null)" = "03e7" ]; then dev=$(dirname "$d"); B=$(cat "$dev/busnum" 2>/dev/null); D=$(cat "$dev/devnum" 2>/dev/null); [ -n "$B" ]&&[ -n "$D" ]&&chmod 666 "$(printf /dev/bus/usb/%03d/%03d "$B" "$D")" 2>/dev/null; fi; done; sleep 0.2; done' ) &

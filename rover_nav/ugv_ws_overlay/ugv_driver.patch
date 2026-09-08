@@ -1,0 +1,64 @@
+diff --git a/src/ugv_main/ugv_bringup/ugv_bringup/ugv_driver.py b/src/ugv_main/ugv_bringup/ugv_bringup/ugv_driver.py
+index 89b8af0..ee2734f 100644
+--- a/src/ugv_main/ugv_bringup/ugv_bringup/ugv_driver.py
++++ b/src/ugv_main/ugv_bringup/ugv_bringup/ugv_driver.py
+@@ -10,17 +10,19 @@ import subprocess
+ import time
+ import os
+ 
+-def is_jetson():
+-    result = any("ugv_jetson" in root for root, dirs, files in os.walk("/"))
+-    return result
+-
+-if is_jetson():
+-    serial_port = '/dev/ttyTHS1'
+-else:
+-    serial_port = '/dev/ttyAMA0'
++# Waveshare UGV Jetson serial connection
++serial_port = os.environ.get("UGV_SERIAL_PORT", "/dev/ttyTHS1")
+ 
+ # Initialize serial communication with the UGV
+-ser = serial.Serial(serial_port, 115200, timeout=1)
++print(f"[ugv_driver] Opening serial port {serial_port} at 115200 baud", flush=True)
++
++ser = serial.Serial(
++    port=serial_port,
++    baudrate=115200,
++    timeout=1,
++)
++
++print(f"[ugv_driver] Serial port {serial_port} opened successfully", flush=True)
+ 
+ class UgvDriver(Node):
+     def __init__(self, name):
+@@ -110,16 +112,23 @@ class UgvDriver(Node):
+ 
+ def main(args=None):
+     rclpy.init(args=args)
+-    node = UgvDriver("ugv_driver")
+-    
++    node = None
++
+     try:
+-        rclpy.spin(node)  # Keep the node running and handling callbacks
++        node = UgvDriver("ugv_driver")
++        rclpy.spin(node)
+     except KeyboardInterrupt:
+-        pass  # Graceful shutdown on user interrupt
++        pass
+     finally:
+-        node.destroy_node()
+-        rclpy.shutdown()
+-        ser.close()  # Close the serial connection
++        if node is not None:
++            node.destroy_node()
++
++        if rclpy.ok():
++            rclpy.shutdown()
++
++        if ser.is_open:
++            ser.close()
+ 
+ if __name__ == '__main__':
+     main()
++

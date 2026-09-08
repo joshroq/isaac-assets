@@ -1,0 +1,8 @@
+/oak:
+  ros__parameters:
+    camera: {i_pipeline_type: Stereo, i_enable_imu: true, i_nn_type: none}
+    rgb: {i_publish_topic: false}
+    left:  {i_publish_topic: true, i_resolution: '400', i_fps: 20.0}
+    right: {i_publish_topic: true, i_resolution: '400', i_fps: 20.0}
+    stereo: {i_publish_topic: true, i_publish_left_rect: true, i_publish_right_rect: true, i_align_depth: false}
+    imu: {i_message_type: IMU}
