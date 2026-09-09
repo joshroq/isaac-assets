@@ -29,7 +29,7 @@ pieces it depends on (the `ugv_ws` source edit and the ORB-SLAM3 wrapper source)
 | `_sudo.sh` | sudo helper (password parameterized — see below) | `~/rover_nav/` |
 | `param_backups/amcl_dwa.yaml.orig` | pristine Nav2 params (depth is injected at runtime) | `~/rover_nav/` |
 | `calib/` | sim→real motion calibration tools (needs battery to run) | `~/rover_nav/` |
-| `ugv_ws_overlay/` | the `ugv_driver.py` edit + a `.patch` | apply into `~/ugv_ws` |
+| `ugv_ws_overlay/` | the `ugv_driver.py` + `ugv_bringup.py` edits + `.patch` files | apply into `~/ugv_ws` |
 | `orbslam_ws_src/orbslam3_ros2_wrapper/` | ORB-SLAM3 ROS 2 wrapper source | `~/orbslam_ws/src/` |
 
 ## Prerequisites on the new rover
@@ -48,14 +48,25 @@ pieces it depends on (the `ugv_ws` source edit and the ORB-SLAM3 wrapper source)
 
 ## Apply the `ugv_ws` source edit
 
-The only meaningful source change to the fork is `ugv_driver.py` (hardcodes the Jetson
-serial port via `UGV_SERIAL_PORT`, defaults `/dev/ttyTHS1`, and shuts down cleanly):
+There are two source edits to the fork, both in `ugv_bringup`:
+
+- **`ugv_driver.py`** — hardcodes the Jetson serial port via `UGV_SERIAL_PORT` (default
+  `/dev/ttyTHS1`) and shuts down cleanly.
+- **`ugv_bringup.py`** — same serial-port fix. The stock `is_jetson()` picked the port by
+  walking the entire filesystem for a `ugv_jetson` path; on a rover without that path it
+  silently fell back to the Pi port `/dev/ttyAMA0`, so the feedback reader got NO base data
+  (`/voltage`, `/imu`, `/odom` all dead) even though the ESP32 was fine. Now uses
+  `UGV_SERIAL_PORT` (default `/dev/ttyTHS1`), matching `ugv_driver.py`.
 
 ```bash
-cd ~/ugv_ws && git apply ~/rover_nav/ugv_ws_overlay/ugv_driver.patch
-# or just copy the file:
+cd ~/ugv_ws
+git apply ~/rover_nav/ugv_ws_overlay/ugv_driver.patch
+git apply ~/rover_nav/ugv_ws_overlay/ugv_bringup.patch
+# or just copy the files:
 # cp ~/rover_nav/ugv_ws_overlay/src/ugv_main/ugv_bringup/ugv_bringup/ugv_driver.py \
 #    ~/ugv_ws/src/ugv_main/ugv_bringup/ugv_bringup/ugv_driver.py
+# cp ~/rover_nav/ugv_ws_overlay/src/ugv_main/ugv_bringup/ugv_bringup/ugv_bringup.py \
+#    ~/ugv_ws/src/ugv_main/ugv_bringup/ugv_bringup/ugv_bringup.py
 ```
 
 (The Nav2 params are NOT patched into the tree — the depth-cloud config is injected at
