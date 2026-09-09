@@ -1,6 +1,8 @@
 #!/bin/bash
-# LiDAR SLAM (slam_toolbox) + Nav2 (2D lidar only). Needs start_bringup.sh running.
+# LiDAR SLAM (slam_toolbox) + Nav2 — live mapping, 2D lidar only.
+# SELF-CONTAINED: this launch starts the base bringup (motors / LD19 / wheel odom /
+# rf2o / TF) ITSELF. Do NOT also run start_bringup.sh — a second ugv_bringup opens
+# /dev/ttyTHS1 twice and shreds the base feedback ("multiple access on port").
+# slam_toolbox builds the map as you drive; send goals with send_goal.py (or teleop).
 source ~/rover_nav/local_ros_env.sh
-B=~/rover_nav/param_backups/amcl_dwa.yaml.orig
-[ -f "$B" ] && cp "$B" ~/ugv_ws/src/ugv_main/ugv_nav/param/amcl_dwa.yaml   # pure-lidar params
-exec ros2 launch ugv_nav nav.launch.py use_slam:=true use_rviz:=false use_localplan:=dwa
+exec ros2 launch ugv_nav slam_nav.launch.py slam:=True use_rviz:=false
