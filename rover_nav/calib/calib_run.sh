@@ -18,6 +18,15 @@
 # For T3 (square) run four straight + four spin legs and record the final grid error
 # in the 'notes'. For T5 (accel) read the bag; for T6 (deadband) use 'custom' with
 # small vx values and note where motion begins.
+#
+# START ALIGNMENT (do this before every run, standing in front of the grid):
+#   * grid origin (0,0) = BOTTOM-LEFT corner; +x (forward) runs along the BOTTOM edge
+#     to the right; +y (left) runs up the LEFT edge. right = -y.
+#   * place the rover's BACK-RIGHT wheel on the bottom-left corner, facing to your right.
+#   * align heading: both RIGHT-side wheels must lie on the bottom-edge line (front-right
+#     ends ~17 cm along it). Use the meter stick / T-square blade along the bottom edge.
+#   * note: rover center (base_footprint) then starts at grid ~(0.086, 0.087) m; tests
+#     measure displacement so this offset does not matter.
 
 source ~/rover_nav/local_ros_env.sh
 CAL=~/rover_nav/calib
