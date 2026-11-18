@@ -19,6 +19,11 @@ The rover is now driven **exclusively by `geometry_msgs/Twist` on `/cmd_vel`**,
 whether that comes from the keyboard teleop or from Nav2. No Python driver, no
 write-arbitration.
 
+The chassis uses `base_link_fixed2.stl` through the shared imported USD and fixed
+URDF. All Isaac runners inherit it on their next launch. See
+[the mesh update audit](BASE_MESH_UPDATE.md) for geometry, graph dependencies,
+installed-package synchronization and the read-only verification command.
+
 ## Part 1 — SLAM/Nav2 fidelity baseline (current thesis focus)
 
 > **Current thesis Part 1 is not randomized-object navigation.** Part 1 uses a
@@ -488,6 +493,12 @@ The baked ROS 2 bridge dlopens Isaac's **bundled** ROS 2 libs. If a system ROS 2
 (Python 3.10) is sourced, it shadows them and the bridge fails. `isaacpy`
 (`isaacpy_clean.sh`) scrubs system ROS from the Isaac process while keeping
 `ROS_DOMAIN_ID`/`RMW` so DDS still meets the Nav2 terminal. See `isaacpy_clean.sh`.
+
+For a system ROS terminal, run `source ros2env.sh` to match Isaac's
+`ROS_LOCALHOST_ONLY=0` and ordinary discovery. The wrapper sets that mode even if
+`~/.bashrc` uses localhost-only elsewhere. Odometry is `/ugv_sim/odom`;
+`/cmd_vel`, `/clock`, and `/tf` are global. Check received messages, not just a
+cached `ros2 topic list`. `SIM_REALTIME=1` optionally caps stepping at real time.
 
 ## Status
 

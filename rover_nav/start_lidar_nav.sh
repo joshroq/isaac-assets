@@ -5,4 +5,5 @@
 # /dev/ttyTHS1 twice and shreds the base feedback ("multiple access on port").
 # slam_toolbox builds the map as you drive; send goals with send_goal.py (or teleop).
 source ~/rover_nav/local_ros_env.sh
+source ~/rover_nav/_check_single_stack.sh
 exec ros2 launch ugv_nav slam_nav.launch.py slam:=True use_rviz:=false

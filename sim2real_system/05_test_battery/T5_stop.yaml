@@ -1,0 +1,7 @@
+name: T5_stop
+# Reach speed then command 0 and let it coast. Isolates brake torque cap + linear drag + mu.
+# Start at one edge; keep ~0.4 m of run-out room past the 0.6 m drive.
+steps:
+  - {linear: 0.00, angular: 0.0, duration: 1.0}
+  - {linear: 0.20, angular: 0.0, duration: 3.0}   # up to speed, ~0.6 m
+  - {linear: 0.00, angular: 0.0, duration: 4.0}   # coast to rest

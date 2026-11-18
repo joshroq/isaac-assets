@@ -24,7 +24,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../meshes/ugv_rover/base_link_fixed.stl" />
+          filename="../meshes/ugv_rover/base_link_fixed2.stl" />
       </geometry>
       <material
         name="">
@@ -38,7 +38,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../meshes/ugv_rover/base_link_fixed.stl" />
+          filename="../meshes/ugv_rover/base_link_fixed2.stl" />
       </geometry>
     </collision>
   </link>
@@ -399,7 +399,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../meshes/ugv_rover/front_camera_link.stl" />
+          filename="../meshes/ugv_rover/3d_camera_link.stl" />
       </geometry>
       <material
         name="">
@@ -413,7 +413,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="../meshes/ugv_rover/front_camera_link.stl" />
+          filename="../meshes/ugv_rover/3d_camera_link.stl" />
       </geometry>
     </collision>
   </link>
@@ -422,7 +422,7 @@
     name="front_camera_link_joint"
     type="fixed">
     <origin
-      xyz="0.06531 0 0.021953"
+      xyz="0.06531 0 0.067653"
       rpy="0 0 0" />
     <parent
       link="base_link" />
@@ -476,7 +476,7 @@
     name="base_lidar_link_joint"
     type="fixed">
     <origin
-      xyz="0.0398145505519817 0 0.04"
+      xyz="0.0398145505519817 0 0.0857"
       rpy="0 0 1.5708" />
     <parent
       link="base_link" />
@@ -529,7 +529,7 @@
     name="pt_base_link_joint"
     type="fixed">
     <origin
-      xyz="-0.018892 0 0.04"
+      xyz="-0.018892 0 0.0857"
       rpy="0 0 0" />
     <parent
       link="base_link" />

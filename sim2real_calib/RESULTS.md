@@ -1,0 +1,44 @@
+# sim2real results catalog
+
+Every demo (real + sim driven together, no optimiser) and optimiser (closed loop) session, newest first. Regenerated automatically at the end of each test / iteration (`viz/session_index.py`). Open a session's `index.md` for its videos, graphics and data.
+
+| started | kind | session | tests | drive | headline |
+|---|---|---|---|---|---|
+| 2026-11-18 12:46 | optimizer | [Closed sim2real loop - padded (padded_20261118_124645)](loop/runs/padded_20261118_124645/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (PhysX wheel drives) |  |
+| 2026-11-18 12:44 | optimizer | [Closed sim2real loop - padded (padded_20261118_124411)](loop/runs/padded_20261118_124411/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (PhysX wheel drives) |  |
+| 2026-11-12 08:41 | optimizer | [verify_20261112_082754](loop/runs/verify_20261112_082754) |  |  |  |
+| 2026-11-12 08:16 | optimizer | [Closed sim2real loop - concrete (concrete_20261111_140923)](loop/runs/concrete_20261111_140923/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (physics) |  |
+| 2026-11-12 01:00 | optimizer | [Closed sim2real loop - concrete (concrete_20261112_010006)](loop/runs/concrete_20261112_010006/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (physics) | iteration 1: rms z 2.28 -> 2.34; wheel_distance=0.3228, max_linear_speed=0.6322, max_angul |
+| 2026-11-12 00:30 | optimizer | [Closed sim2real loop - concrete (concrete_20261112_003046)](loop/runs/concrete_20261112_003046/index.md) | T1_straight, T3_speed_sweep, T5_stop, T2_spin, T6_spin_sweep | wheel contact (physics) | iteration 1: rms z 2.10 -> 1.68; base_linear_damping=3.6, base_angular_damping=3.645 |
+| 2026-11-11 23:02 | optimizer | [Closed sim2real loop - concrete (concrete_20261111_230252)](loop/runs/concrete_20261111_230252/index.md) | T1_straight, T3_speed_sweep, T2_spin, T6_spin_sweep, R2_spin_rates | wheel contact (physics) | iteration 1: rms z 7.42 -> 1.73; wheel_distance=0.3192, corner_mu_dynamic=1.132, corner_mu |
+| 2026-11-11 22:02 | optimizer | [Closed sim2real loop - concrete (concrete_20261111_220209)](loop/runs/concrete_20261111_220209/index.md) | T1_straight, T3_speed_sweep, T2_spin, T6_spin_sweep, R2_spin_rates | wheel contact (physics) |  |
+| 2026-11-11 21:44 | optimizer | [Closed sim2real loop - concrete (concrete_20261111_214420)](loop/runs/concrete_20261111_214420/index.md) | T3b_top_speed, T6_spin_sweep | wheel contact (physics) | iteration 1: rms z 12.25 -> 11.50; max_linear_speed=0.62, max_angular_speed=2.78 |
+| 2026-11-11 21:02 | optimizer | [Closed sim2real loop - concrete (concrete_20261111_210232)](loop/runs/concrete_20261111_210232/index.md) | T1_straight, T5_stop, T2_spin | wheel contact (physics) | iteration 1: rms z 2.62 -> 1.79; max_acceleration=2.562, max_deceleration=3.974, max_angul |
+| 2026-11-05 10:16 | optimizer | [Closed sim2real loop - carpet (carpet_20261104_221410)](loop/runs/carpet_20261104_221410/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model |  |
+| 2026-11-04 17:15 | optimizer | [Closed sim2real loop - carpet (carpet_20261104_171517)](loop/runs/carpet_20261104_171517/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model | iteration 1: rms z 5.24 -> 1.25; k_v=0.9474, c_turn=0.05696, g_spin=0.3064, g_arc=0.4591,  |
+| 2026-11-04 17:14 | optimizer | [Closed sim2real loop - carpet (carpet_20261104_171455)](loop/runs/carpet_20261104_171455/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model |  |
+| 2026-11-04 13:02 | demo | [Sim vs real demo - carpet (20261104_130227)](demo/runs/carpet_20261104_130227/index.md) | T1, T2, T4 | response model | T1: endpoint 58.4 cm, mean 40.1 cm, heading 0.4 deg |
+| 2026-11-04 12:31 | optimizer | [Closed sim2real loop - carpet (carpet_20261104_123114)](loop/runs/carpet_20261104_123114/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model | iteration 1: rms z 2.14 -> 1.26; k_v=0.9712, c_turn=0.06382, g_spin=0.3147, g_arc=0.5693,  |
+| 2026-11-04 11:58 | optimizer | [Closed sim2real loop - carpet (carpet_20261104_115802)](loop/runs/carpet_20261104_115802/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model | iteration 1: rms z 2.14 -> 1.26; k_v=0.9712, c_turn=0.06382, g_spin=0.3147, g_arc=0.5693,  |
+| 2026-11-03 22:27 | optimizer | [Closed sim2real loop - carpet (carpet_20261103_222720)](loop/runs/carpet_20261103_222720/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model | iteration 1: rms z 2.14 -> 1.26; k_v=0.9712, c_turn=0.06382, g_spin=0.3147, g_arc=0.5693,  |
+| 2026-11-03 22:17 | optimizer | [Closed sim2real loop - carpet (carpet_20261103_220043)](loop/runs/carpet_20261103_220043/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model |  |
+| 2026-11-03 01:23 | optimizer | [Closed sim2real loop - carpet (carpet_20261103_004227)](loop/runs/carpet_20261103_004227/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model |  |
+| 2026-11-03 00:17 | optimizer | [Closed sim2real loop - carpet (carpet_20261103_001715)](loop/runs/carpet_20261103_001715/index.md) | R1_straight_fb, R2_spin_rates, R3_arcs_slow, R4_arcs_fast, R5_nav_pattern, T1_straight … | response model | iteration 1: rms z 3.66 -> 3.06; k_v=0.9481, c_turn=1.735e-13, g_spin=0.07505, g_arc=0.351 |
+| 2026-10-29 11:18 | optimizer | [Closed sim2real loop - carpet (carpet_20261029_111857)](loop/runs/carpet_20261029_111857/index.md) | T1_straight, T2_spin, T4_arc | wheel contact (physics) | iteration 1: rms z 3.98 -> 1.40; wheel_distance=0.2675, drive_max_force=2.233 |
+| 2026-10-29 11:12 | demo | [Sim vs real demo - demo (20261029_111239)](demo/runs/demo_20261029_111239/index.md) | T1, T2, T4 | response model | T1: endpoint 13.8 cm, mean 9.1 cm, heading 15.0 deg |
+| 2026-10-29 11:10 | demo | [Sim vs real demo - demo (20261029_111053)](demo/runs/demo_20261029_111053/index.md) | T1, T2, T4 | response model | no comparable results |
+| 2026-10-29 03:07 | optimizer | [Closed sim2real loop - carpet (carpet_20261029_030709)](loop/runs/carpet_20261029_030709/index.md) | T2_spin | wheel contact (physics) |  |
+| 2026-10-29 03:06 | demo | [Sim vs real demo - fixcheck (20261029_030610)](demo/runs/fixcheck_20261029_030610/index.md) | T1 | response model | T1: endpoint 59.4 cm, mean 40.3 cm, heading 3.5 deg |
+| 2026-10-29 02:49 | optimizer | [Closed sim2real loop - carpet (carpet_20261029_024941)](loop/runs/carpet_20261029_024941/index.md) | T1_straight, T2_spin, T4_arc | wheel contact (physics) | iteration 1: rms z 30.73 -> 18.85; wheel_distance=0.2675, drive_max_force=50 |
+| 2026-10-29 02:44 | demo | [Sim vs real demo - demo (20261029_024443)](demo/runs/demo_20261029_024443/index.md) | T1, T2, T4 | response model | T1: endpoint 5.7 cm, mean 4.0 cm, heading 4.3 deg |
+| 2026-10-20 20:44 | optimizer | [verify_20261020_204143](loop/runs/verify_20261020_204143) |  |  |  |
+| 2026-10-20 20:36 | optimizer | [carpet_20261020_194607](loop/runs/carpet_20261020_194607) | T1_straight, T2_spin, T4_arc |  | iter 1: rms z 3.18 -> 0.82 |
+| 2026-10-19 23:46 | optimizer | [fake_rover_test_20261019_234004](loop/runs/fake_rover_test_20261019_234004) | T1_straight, T2_spin |  | iter 1: rms z 13.98 -> 10.04; iter 2: rms z 15.07 -> 12.95 |
+| 2026-10-19 23:39 | optimizer | [fake_rover_test_20261019_233302](loop/runs/fake_rover_test_20261019_233302) | T1_straight, T2_spin |  | iter 1: rms z 12.55 -> 12.51 |
+| 2026-10-19 23:22 | optimizer | [fake_rover_test_20261019_231653](loop/runs/fake_rover_test_20261019_231653) | T1_straight, T2_spin |  | iter 1: rms z 12.64 -> 12.64 |
+| 2026-10-19 22:39 | optimizer | [pipeline_test_fixture_20261019](loop/runs/pipeline_test_fixture_20261019) | T1_straight, T2_spin, T4_arc |  | iter 1: rms z 25.05 -> 20.94 |
+| 2026-10-15 15:27 | demo | [demo](demo/runs/demo) | T1, T2, T2_spin, T3, T3b, T4 … |  | T1 20.6 cm, T2 0.7 cm, T3 19.5 cm, T4 11.8 cm |
+| 2026-10-14 21:28 | demo | [sweep](demo/runs/sweep) | T1_straight, T2_spin |  | T1_straight 27.6 cm |
+| 2026-10-14 15:59 | demo | [live](demo/runs/live) | T2_spin |  | T2_spin 5.8 cm |
+| 2026-10-14 15:56 | demo | [rehearsal](demo/runs/rehearsal) | T1_straight |  | T1_straight 32.6 cm |
+| 2026-10-07 23:11 | demo | [heavy_carpet](demo/runs/heavy_carpet) | T1, T2 |  |  |

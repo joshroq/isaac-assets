@@ -1,0 +1,30 @@
+# Loop around one box on the 2 m x 2 m taped grid.
+# Course frame = overhead grid frame: metres, origin at the grid's bottom-left
+# corner, x along the bottom edge, y along the left edge.
+#
+# BUILD IT (real rover): four wall panels (cardboard / boards, >= 0.40 m tall so the
+# LD19 scan plane hits them) 0.25 m OUTSIDE the grid border, plus one box centred on
+# the grid centre. Measure positions off the tape; +-1 cm is fine.
+# Isaac builds the same geometry from this file (ugv_controller_v2/run_nav_course.py).
+name: grid2x2_box
+description: >
+  Loop around a central box: start bottom-left facing +x, drive the three other
+  corners counter-clockwise, return to start. Tests straight runs, 90 deg turns
+  at goals, and obstacle-skirting around the box.
+start: {x: 0.35, y: 0.35, yaw_deg: 0}
+goals:
+  - {name: G1, x: 1.65, y: 0.35, yaw_deg: 90}
+  - {name: G2, x: 1.65, y: 1.65, yaw_deg: 180}
+  - {name: G3, x: 0.35, y: 1.65, yaw_deg: -90}
+return_to_start: true          # adds the scored "return" leg back to start
+goal_timeout_s: 90
+walls:
+  - {name: south, from: [-0.25, -0.25], to: [2.25, -0.25], height: 0.40, thickness: 0.02}
+  - {name: east,  from: [2.25, -0.25],  to: [2.25, 2.25],  height: 0.40, thickness: 0.02}
+  - {name: north, from: [2.25, 2.25],   to: [-0.25, 2.25], height: 0.40, thickness: 0.02}
+  - {name: west,  from: [-0.25, 2.25],  to: [-0.25, -0.25], height: 0.40, thickness: 0.02}
+boxes:
+  - {name: centre_box, center: [1.0, 1.0], size: [0.35, 0.35, 0.35], yaw_deg: 0}
+# Leaving this rectangle (base_footprint, course frame) cancels the goal and stops
+# the rover. Keep it inside the walls.
+fence: {xmin: -0.15, xmax: 2.15, ymin: -0.15, ymax: 2.15}

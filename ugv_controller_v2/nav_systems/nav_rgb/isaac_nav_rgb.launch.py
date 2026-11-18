@@ -41,6 +41,15 @@ RUN (Isaac running this system's rover elsewhere):
   ros2 launch <this file> localization:=true           # localize vs saved db
   ros2 launch <this file> use_localplan:=teb            # planner: teb|dwa|rpp|mppi
   ros2 launch <this file> use_robot_state_publisher:=true  # USD-iteration fallback
+
+KNOWN-MAP MODE (thesis Experiment A — build one RTAB-Map db, then localize in it):
+  # 1) mapping run: drive the full environment, db saved on exit to the named file
+  ros2 launch <this file> localization:=false \
+      database_path:=<repo>/experiments/maps/warehouse/rtabmap.db
+  # 2) per-trial localization run: reuse that db (no relearning), no priming drive
+  ros2 launch <this file> localization:=true \
+      database_path:=<repo>/experiments/maps/warehouse/rtabmap.db
+Default (no database_path) is unchanged: live mapping into ~/.ros/rtabmap.db.
 """
 
 import os
@@ -221,6 +230,14 @@ def _launch_setup(context, *args, **kwargs):
     # rtabmap subscribes to RGB + depth (via RTABMAP_REMAPPINGS -> /ugv_sim/oak/*)
     # + /scan, uses Isaac's odom/TF as the guess, and publishes /map + map->odom.
     rtabmap_params = _rtabmap_parameters(use_sim_time, queue_size, qos)
+    # Named database so a mapping run and a later localization run share ONE known
+    # file (Experiment A). Empty (default) = RTAB-Map's own ~/.ros/rtabmap.db, i.e.
+    # unchanged behavior. Point both modes at e.g.
+    # experiments/maps/warehouse/rtabmap.db: map once (localization:=false, which
+    # passes -d to start fresh and saves on exit), then localize:=true reuses it.
+    database_path = _launch_value(context, "database_path", "")
+    if database_path:
+        rtabmap_params = {**rtabmap_params, "database_path": database_path}
 
     # The sim publishes sensor DATA under the `ugv_sim` namespace (so it can run
     # next to the real rover). rtabmap's RGB/depth are pointed at /ugv_sim/oak/*
@@ -308,8 +325,14 @@ def generate_launch_description():
                               description="Nav2 local planner: teb, dwa, rpp, mppi "
                                           "(teb needs ros-humble-teb-local-planner)"),
         DeclareLaunchArgument("localization", default_value="false",
-                              description="Localize against a saved ~/.ros/rtabmap.db "
-                                          "(true) instead of mapping live (false)"),
+                              description="Localize against a saved RTAB-Map db (true, "
+                                          "Mem/IncrementalMemory:=False) instead of "
+                                          "mapping live (false). Pair with database_path "
+                                          "to reuse a specific map (Experiment A)"),
+        DeclareLaunchArgument("database_path", default_value="",
+                              description="RTAB-Map database file for BOTH mapping and "
+                                          "localization (e.g. .../experiments/maps/"
+                                          "warehouse/rtabmap.db). Empty = ~/.ros/rtabmap.db"),
         DeclareLaunchArgument("queue_size", default_value="20",
                               description="rtabmap input queue size (upstream default 20)"),
         DeclareLaunchArgument("qos", default_value="2",

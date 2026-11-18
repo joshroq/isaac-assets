@@ -145,7 +145,12 @@ Visualization Manager:
           Selectable: true
           Size (Pixels): 2
           Size (m): 0.01
-          Style: Flat Squares
+          # "Points": this machine's ros-humble-rviz-rendering 11.2.27 ships an incomplete
+          # GLSL150 media set (box/flat_square/sphere materials missing), so "Flat Squares"
+          # renders to a BLACK viewport (the colored-cloud path swallows the missing-material
+          # throw instead of crashing). "Points" uses point_cloud_point.material, which is
+          # present. Proper fix: apt reinstall/downgrade ros-humble-rviz-rendering.
+          Style: Points
           Topic:
             Depth: 5
             Durability Policy: Volatile

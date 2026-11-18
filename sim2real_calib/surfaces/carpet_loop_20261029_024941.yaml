@@ -1,0 +1,62 @@
+surface: carpet
+combine_mode: min
+floor_friction_band:
+  static:
+  - 0.6
+  - 1.0
+  dynamic:
+  - 0.5
+  - 0.9
+measured:
+  base_mass: 1.40495
+  wheel_mass: 0.08
+calibrated:
+  wheel_distance: 0.26750000000000007
+  max_linear_speed: 0.5
+  max_angular_speed: 1.9
+  max_acceleration: 5.0
+  max_deceleration: 8.0
+  max_angular_acceleration: 20.0
+  corner_mu_dynamic: 1.0
+  corner_mu_static: 1.2
+  middle_mu_dynamic: 1.0
+  middle_mu_static: 1.2
+  floor_mu_dynamic: 0.7
+  floor_mu_static: 0.8
+  drive_damping: 10000.0
+  drive_max_force: 49.99999999999999
+  base_linear_damping: 0.0
+  base_angular_damping: 0.05
+fixed: {}
+stage_results:
+  iteration_1:
+    wheel_distance: 0.26750000000000007
+    drive_max_force: 49.99999999999999
+    rms_z: 18.85278878459468
+sim_calibration_yaml:
+  mass:
+    base_link: 1.40495
+    wheel: 0.08
+  differential_controller:
+    wheelDistance: 0.26750000000000007
+    maxLinearSpeed: 0.5
+    maxAngularSpeed: 1.9
+    maxAcceleration: 5.0
+    maxDeceleration: 8.0
+    maxAngularAcceleration: 20.0
+  wheel_friction:
+    corner_wheel:
+      dynamicFriction: 1.0
+      staticFriction: 1.2
+    middle_wheel:
+      dynamicFriction: 1.0
+      staticFriction: 1.2
+  floor_friction:
+    dynamicFriction: 0.7
+    staticFriction: 0.8
+  wheel_drive:
+    damping: 10000.0
+    maxForce: 49.99999999999999
+  drag:
+    base_linear_damping: 0.0
+    base_angular_damping: 0.05

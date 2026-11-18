@@ -1,3 +1,16 @@
+# cuVSLAM + nvblox navigation view.
+#
+# This is intentionally conservative for the RTX 5060 Ti / Humble RViz setup here:
+# no point-cloud/laser-scan display, pose-array arrows, or markers — those trigger the
+# missing rviz/glsl150/box.geom abort on this machine's rviz-rendering 11.2.27. The Nav2
+# panel IS kept — it's the required /goal_pose -> NavigateToPose bridge for the goal tool.
+# It shows the nvblox 3D reconstruction mesh (safe because the launch forces the plugin's
+# fallback material via ISAAC_ROS_NVBLOX_PLUGIN_FORCE_FALLBACK_MATERIAL=1) plus the 2D
+# navigation surface Nav2 actually consumes:
+#   - /nvblox_node/mesh                     (the 3D reconstruction)
+#   - /global_costmap/costmap + /local_costmap/costmap  (nvblox ESDF slice)
+#   - /plan and /local_plan
+#   - cuVSLAM corrected and raw visual odometry paths
 Panels:
   - Class: rviz_common/Displays
     Name: Displays
@@ -5,7 +18,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /RobotModel1
-        - /Depth Camera1
+        - /Navigation Costmaps1
+        - /cuVSLAM Tracking1
       Splitter Ratio: 0.5
   - Class: rviz_common/Selection
     Name: Selection
@@ -16,6 +30,10 @@ Panels:
     Name: Tool Properties
   - Class: rviz_common/Views
     Name: Views
+  # REQUIRED to drive via the "2D Goal Pose" tool: bt_navigator does NOT subscribe to
+  # /goal_pose — this panel is the bridge that forwards the tool's /goal_pose to the
+  # NavigateToPose action. Without it, goal clicks do nothing. It's a Qt panel (no Ogre
+  # shaders), so it does not risk the box.geom abort that the 3D point displays do.
   - Class: nav2_rviz_plugins/Navigation 2
     Name: Navigation 2
 Visualization Manager:
@@ -51,69 +69,23 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
     - Class: rviz_default_plugins/TF
-      Enabled: true
+      Enabled: false
       Frame Timeout: 15
-      Marker Scale: 0.6
+      Marker Scale: 0.4
       Name: TF
-      Show Arrows: true
+      Show Arrows: false
       Show Axes: true
       Show Names: false
       Update Interval: 0
-      Value: true
-    - Alpha: 1
-      Autocompute Intensity Bounds: true
-      Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
-      Axis: Z
-      Channel Name: intensity
-      Class: rviz_default_plugins/LaserScan
-      Color: 255; 255; 255
-      Color Transformer: Intensity
-      Decay Time: 0
-      Enabled: true
-      Max Intensity: 255
-      Min Intensity: 0
-      Name: LaserScan
-      Position Transformer: XYZ
-      Size (Pixels): 3
-      Size (m): 0.01
-      Style: Points
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /ugv_sim/scan
-      Use Fixed Frame: true
-      Use rainbow: true
-      Value: true
-    - Alpha: 0.7
-      Class: rviz_default_plugins/Map
-      Color Scheme: costmap
-      Draw Behind: true
-      Enabled: true
-      Name: Global Costmap
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /global_costmap/costmap
-      Update Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /global_costmap/costmap_updates
-      Use Timestamp: false
-      Value: true
+      Value: false
+    # nvblox 3D reconstruction mesh. Safe here ONLY because the launch sets
+    # ISAAC_ROS_NVBLOX_PLUGIN_FORCE_FALLBACK_MATERIAL=1 on the rviz2 process, forcing the
+    # plugin's built-in BaseWhiteNoLighting material instead of its default rviz/glsl150/
+    # box.geom path (that geometry program is missing from this box's rviz-rendering and
+    # would abort RViz). The mesh renders plain/untextured (use_color is off anyway).
     - Class: nvblox_rviz_plugin/NvbloxMesh
       Enabled: true
-      Name: Nvblox Mesh
+      Name: Nvblox 3D Mesh
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -124,101 +96,159 @@ Visualization Manager:
       Value: true
     - Class: rviz_common/Group
       Displays:
-        - Alpha: 1
-          Autocompute Intensity Bounds: true
-          Autocompute Value Bounds:
-            Max Value: 2.5
-            Min Value: 0
-            Value: false
-          Axis: Z
-          Channel Name: intensity
-          Class: rviz_default_plugins/PointCloud2
-          Color: 255; 255; 255
-          Color Transformer: AxisColor
-          Decay Time: 0
+        - Alpha: 0.75
+          Class: rviz_default_plugins/Map
+          Color Scheme: costmap
+          Draw Behind: true
           Enabled: true
-          Name: Depth PointCloud
-          Position Transformer: XYZ
-          Selectable: true
-          Size (Pixels): 2
-          Size (m): 0.01
-          Style: Flat Squares
+          Name: Global Costmap - nvblox ESDF
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /global_costmap/costmap
+          Update Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /global_costmap/costmap_updates
+          Use Timestamp: false
+          Value: true
+        - Alpha: 0.45
+          Class: rviz_default_plugins/Map
+          Color Scheme: costmap
+          Draw Behind: false
+          Enabled: true
+          Name: Local Costmap - nvblox ESDF
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            Filter size: 10
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /local_costmap/costmap
+          Update Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /local_costmap/costmap_updates
+          Use Timestamp: false
+          Value: true
+      Enabled: true
+      Name: Navigation Costmaps
+    - Class: rviz_common/Group
+      Displays:
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 25; 255; 0
+          Enabled: true
+          Head Diameter: 0
+          Head Length: 0
+          Length: 0.3
+          Line Style: Lines
+          Line Width: 0.035
+          Name: Global Plan
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0.02
+          Pose Style: None
+          Radius: 0.03
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
             History Policy: Keep Last
-            Reliability Policy: Best Effort
-            Value: /ugv_sim/oak/depth/points
-          Use Fixed Frame: true
-          Use rainbow: true
+            Reliability Policy: Reliable
+            Value: /plan
+          Value: true
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 0; 170; 255
+          Enabled: true
+          Head Diameter: 0
+          Head Length: 0
+          Length: 0.3
+          Line Style: Lines
+          Line Width: 0.035
+          Name: Local Plan
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0.04
+          Pose Style: None
+          Radius: 0.03
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /local_plan
           Value: true
       Enabled: true
-      Name: Depth Camera
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 25; 255; 0
+      Name: Nav2 Plans
+    - Class: rviz_common/Group
+      Displays:
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 255; 170; 0
+          Enabled: true
+          Head Diameter: 0
+          Head Length: 0
+          Length: 0.3
+          Line Style: Lines
+          Line Width: 0.035
+          Name: cuVSLAM SLAM Path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0.08
+          Pose Style: None
+          Radius: 0.03
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /visual_slam/tracking/slam_path
+          Value: true
+        - Alpha: 1
+          Buffer Length: 1
+          Class: rviz_default_plugins/Path
+          Color: 255; 85; 255
+          Enabled: true
+          Head Diameter: 0
+          Head Length: 0
+          Length: 0.3
+          Line Style: Lines
+          Line Width: 0.025
+          Name: cuVSLAM VO Path
+          Offset:
+            X: 0
+            Y: 0
+            Z: 0.1
+          Pose Style: None
+          Radius: 0.03
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /visual_slam/tracking/vo_path
+          Value: true
       Enabled: true
-      Head Diameter: 0.3
-      Head Length: 0.2
-      Length: 0.3
-      Line Style: Lines
-      Line Width: 0.03
-      Name: Global Plan
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.1
-      Shaft Length: 0.1
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /plan
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 0; 170; 255
-      Enabled: true
-      Head Diameter: 0.3
-      Head Length: 0.2
-      Length: 0.3
-      Line Style: Lines
-      Line Width: 0.03
-      Name: Local Plan
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.1
-      Shaft Length: 0.1
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /local_plan
-      Value: true
+      Name: cuVSLAM Tracking
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    # odom (not map): odom->base_link comes straight from Isaac, so the robot
-    # model, TF, laser and nvblox mesh (nvblox's global frame is odom) render
-    # immediately, instead of a blank view until cuVSLAM publishes map->odom a
-    # few seconds after the camera starts moving. The map-frame global costmap
-    # still shows once cuVSLAM localizes.
     Fixed Frame: odom
-    Frame Rate: 30
+    Frame Rate: 20
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact
@@ -275,7 +305,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 0.65
+      Pitch: 0.7
       Target Frame: base_link
       Value: Orbit (rviz)
       Yaw: 1.57
@@ -286,10 +316,8 @@ Window Geometry:
   Height: 900
   Hide Left Dock: false
   Hide Right Dock: false
-  Selection:
-    collapsed: false
-  Tool Properties:
-    collapsed: false
   Views:
     collapsed: false
   Width: 1400
+  X: 80
+  Y: 80

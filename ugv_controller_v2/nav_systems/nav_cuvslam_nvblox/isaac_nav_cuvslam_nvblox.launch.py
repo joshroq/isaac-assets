@@ -5,7 +5,11 @@ PART 1 STACK HEADER
     Obstacle / costmap : nvblox depth reconstruction (ESDF 2D slice → Nav2 costmap)
     RGB used           : yes (stereo pair for cuVSLAM; color for nvblox)
     Depth used         : yes (nvblox reconstruction; cuVSLAM does not use depth)
-    LiDAR used         : NO  (the 2D /scan is never used for localization or costmap)
+    LiDAR used         : LOCALIZATION ONLY, by default (rf2o /scan odom fused with wheel
+                         odom + cuVSLAM in a robot_localization EKF that owns map->odom;
+                         use_localization_fusion:=false for pure-visual, no lidar). The
+                         obstacle costmap is still nvblox (depth) — /scan is NOT a costmap
+                         layer here.
     IMU used           : yes, by default (cuVSLAM VIO; enable_imu_fusion:=false to disable)
     Role               : the NVIDIA visual-depth navigation stack for Part 1
 
@@ -56,9 +60,19 @@ RUN (Isaac running this system's rover elsewhere):
   ros2 launch <this file>
   ros2 launch <this file> enable_imu_fusion:=true     # cuVSLAM VIO (uses the IMU)
   ros2 launch <this file> use_localplan:=rpp          # planner: teb|dwa|rpp|mppi
+
+KNOWN-MAP MODE (thesis Experiment A — save the cuVSLAM map once, then localize in it):
+  # 1) mapping run: drive the environment; cuVSLAM saves the map on shutdown (Ctrl-C)
+  ros2 launch <this file> \
+      map_save_path:=<repo>/experiments/maps/warehouse/cuvslam_map
+  # 2) per-trial localization run: load it + relocalize at startup, no priming drive
+  ros2 launch <this file> \
+      map_load_path:=<repo>/experiments/maps/warehouse/cuvslam_map localize_on_startup:=true
+Default (neither path) is unchanged: live cuVSLAM SLAM.
 """
 
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -68,6 +82,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
     OpaqueFunction,
@@ -119,6 +134,23 @@ URDF_PATH = os.path.join(UGV_DESCRIPTION_SRC, "urdf", "ugv_rover_isaac_fixed.urd
 _LOCALPLAN_CHOICES = ("teb", "dwa", "rpp", "mppi")
 DEFAULT_RVIZ_CONFIG = str(Path(__file__).with_name("isaac_cuvslam_nvblox_nav.rviz"))
 NVBLOX_CONTAINER = "nvblox_container"
+
+# ── Co-equal lidar+visual localization fusion (use_localization_fusion) ───────────
+# Ported from nav_orbslam3. When ON (default), a robot_localization EKF OWNS map->odom
+# by fusing Isaac wheel odom + rf2o laser odometry (/ugv_sim/scan) + cuVSLAM's absolute
+# map-frame pose, so map->odom is continuous even while cuVSLAM is still initializing or
+# has lost tracking (stationary rover / in-place rotation) — which is what otherwise
+# leaves the global costmap with no `map` frame and blocks goals. cuVSLAM then runs with
+# publish_map_to_odom_tf:=false so it feeds the EKF instead of fighting it. OFF restores
+# the original pure-visual behavior (cuVSLAM broadcasts map->odom itself, no lidar).
+SCAN_TOPIC = "/ugv_sim/scan"
+DEFAULT_LASER_FRAME = "base_lidar_link"
+DEFAULT_BASE_FRAME = "base_footprint"          # Isaac's odom child (see USD_CONTRACT.md)
+LIDAR_ODOM_TOPIC = "/cuvslam/lidar_odom"       # rf2o output, fused as odom1
+CUVSLAM_SLAM_ODOM_TOPIC = "/visual_slam/vis/slam_odometry"  # cuVSLAM absolute map pose
+CUVSLAM_POSE_TOPIC = "/cuvslam/pose"           # relayed (covariance-stamped), fused as odom2
+DEFAULT_EKF_CONFIG = str(Path(__file__).parent / "config" / "ekf_map_fusion.yaml")
+POSE_RELAY_SCRIPT = str(Path(__file__).with_name("cuvslam_pose_relay.py"))
 
 
 def _require_file(path: str, label: str) -> str:
@@ -216,6 +248,14 @@ def _prepare_nav_params(context, source_file: str) -> str:
     global_size = float(_launch_value(context, "global_costmap_size", "20.0"))
     min_h = float(_launch_value(context, "depth_min_height", "0.08"))
     max_h = float(_launch_value(context, "depth_max_height", "1.5"))
+    # Costmap TF staleness tolerance. The sim runs slow/jittery here, so RViz stamps a
+    # goal from a lagging /clock while the EKF stamps map->odom at current sim time — the
+    # goal is born ~1 s older than the map->odom buffer's earliest entry, and at the default
+    # 0.3 s the planner throws "Extrapolation into the past / Could not transform the start
+    # or goal pose in the costmap frame", aborts, and the BT runs Spin/Backup/Wait recoveries
+    # forever (the "drives then spins" symptom). A wider tolerance lets the planner use the
+    # nearest available transform for the goal instead of failing.
+    tf_tol = float(_launch_value(context, "transform_tolerance", "1.5"))
 
     with open(source_file, "r") as f:
         data = yaml.safe_load(f)
@@ -224,12 +264,14 @@ def _prepare_nav_params(context, source_file: str) -> str:
     if local:
         _drop_filter(local, "keepout_filter")
         _drop_filter(local, "speed_filter")
+        local["transform_tolerance"] = tf_tol
         _set_nvblox_costmap_layer(local, local.get("global_frame", "odom"))
 
     glob = data.get("global_costmap", {}).get("global_costmap", {}).get("ros__parameters", {})
     if glob:
         _drop_filter(glob, "keepout_filter")
         _drop_filter(glob, "speed_filter")
+        glob["transform_tolerance"] = tf_tol
         _set_nvblox_costmap_layer(glob, glob.get("global_frame", "map"))
         # No /map occupancy grid exists in this stack: make the global costmap a
         # rolling window of a fixed size so it is self-sufficient. Nav2 declares
@@ -267,11 +309,15 @@ def _visual_slam_node(context) -> ComposableNode:
 
     cuVSLAM (Isaac ROS 3.x, cuVSLAM 12.6) is stereo-only: image_0/1 are the left/right
     rectified images, num_cameras=2. (The old single-camera RGBD tracking_mode was
-    removed from the node.) enable_imu_fusion adds the IMU (cuVSLAM VIO). cuVSLAM
-    broadcasts map->odom, the localization output Nav2 consumes (the role slam_toolbox
-    plays in nav_lidar, RTAB-Map in nav_rgb)."""
+    removed from the node.) enable_imu_fusion adds the IMU (cuVSLAM VIO).
+
+    Localization output: by default (use_localization_fusion) the robot_localization EKF
+    owns map->odom and cuVSLAM feeds it via visual_slam/vis/slam_odometry, so cuVSLAM runs
+    with publish_map_to_odom_tf=false. With fusion off, cuVSLAM broadcasts map->odom itself
+    (the role slam_toolbox plays in nav_lidar, RTAB-Map in nav_rgb)."""
     imu_fusion = _launch_bool(context, "enable_imu_fusion", default=True)
     ground_constraint = _launch_bool(context, "enable_ground_constraint", default=True)
+    use_fusion = _launch_bool(context, "use_localization_fusion", default=True)
     left_frame = _launch_value(context, "left_optical_frame", LEFT_OPTICAL_FRAME)
     right_frame = _launch_value(context, "right_optical_frame", RIGHT_OPTICAL_FRAME)
 
@@ -287,16 +333,36 @@ def _visual_slam_node(context) -> ComposableNode:
         "map_frame": "map",
         "odom_frame": "odom",
         "base_frame": "base_link",
-        "publish_map_to_odom_tf": True,   # this is how Nav2 gets map->odom
+        # Fusion on (default): the EKF owns map->odom, so cuVSLAM stops broadcasting it
+        # and instead feeds visual_slam/vis/slam_odometry to the EKF. Off: cuVSLAM owns it.
+        "publish_map_to_odom_tf": not use_fusion,
         "publish_odom_to_base_tf": False,  # Isaac already owns odom->base_link
         "camera_optical_frames": [left_frame, right_frame],
-        "image_jitter_threshold_ms": 34.0,
+        # Isaac's sim camera on this 8 GB GPU delivers the stereo pair at ~4-17 Hz with
+        # large frame-to-frame jitter (58-262 ms observed). At the stock 34 ms threshold
+        # cuVSLAM flags nearly every frame as out-of-order and thrashes; widen it so the
+        # tracker accepts the jittery-but-valid sim frames instead of destabilising.
+        "image_jitter_threshold_ms": 300.0,
         "enable_slam_visualization": True,
         "enable_landmarks_view": True,
         "enable_observations_view": True,
     }
     if imu_fusion:
         params["imu_frame"] = _launch_value(context, "imu_frame", "base_imu_link")
+
+    # Map persistence (Experiment A). Isaac ROS Visual SLAM saves the cuVSLAM map to
+    # save_map_folder_path on node shutdown, and loads load_map_folder_path +
+    # relocalizes (localize_on_startup, identity hint = rover start = map origin) at
+    # startup. Both empty (default) = live SLAM, unchanged behavior. Mapping run:
+    # map_save_path:=<dir>. Localization run: map_load_path:=<dir> localize_on_startup:=true.
+    map_save = _launch_value(context, "map_save_path", "")
+    map_load = _launch_value(context, "map_load_path", "")
+    if map_save:
+        params["save_map_folder_path"] = map_save
+    if map_load:
+        params["load_map_folder_path"] = map_load
+        params["localize_on_startup"] = _launch_bool(
+            context, "localize_on_startup", default=True)
 
     remappings = [
         ("visual_slam/image_0", LEFT_IMAGE_TOPIC),
@@ -316,7 +382,7 @@ def _visual_slam_node(context) -> ComposableNode:
     )
 
 
-def _nvblox_node() -> ComposableNode:
+def _nvblox_node(context) -> ComposableNode:
     """nvblox reconstruction: RGB-D → TSDF/ESDF, publishing the 2D ESDF slice the
     Nav2 nvblox costmap layer consumes. Single camera, no LiDAR. Poses come from TF
     (map->odom from cuVSLAM, odom->base_link + base->camera from Isaac)."""
@@ -328,12 +394,25 @@ def _nvblox_node() -> ComposableNode:
         ("camera_0/color/image", RGB_IMAGE_TOPIC),
         ("camera_0/color/camera_info", RGB_INFO_TOPIC),
     ]
+    overrides = {"use_sim_time": True, "num_cameras": 1, "use_lidar": False}
+    # GPU-memory trim (low_gpu_memory, default on). This machine is an 8 GB RTX 5060 Ti;
+    # Isaac's RTX renderer + cuVSLAM + nvblox together exhaust VRAM, cuVSLAM's tracker init
+    # then fails with "[CUDA] out of memory" (error 4) and the whole component container
+    # aborts (exit -6) — which is what strands nav on wheel/lidar odom and drifts the robot
+    # onto a false "goal reached". Trim nvblox's footprint: drop the color voxel layer (only
+    # the mesh is colored; the costmap only needs tsdf→esdf) and bound the retained map to a
+    # small radius so block allocation stays small. Set low_gpu_memory:=false on a big GPU.
+    if _launch_bool(context, "low_gpu_memory", default=True):
+        overrides.update({
+            "use_color": False,
+            "map_clearing_radius_m": float(
+                _launch_value(context, "nvblox_clearing_radius_m", "3.0")),
+        })
     return ComposableNode(
         name="nvblox_node",
         package="nvblox_ros",
         plugin="nvblox::NvbloxNode",
-        parameters=[base_config, sim_config,
-                    {"use_sim_time": True, "num_cameras": 1, "use_lidar": False}],
+        parameters=[base_config, sim_config, overrides],
         remappings=remappings,
     )
 
@@ -377,21 +456,32 @@ def _launch_setup(context, *args, **kwargs):
         executable="component_container_isolated",
         composable_node_descriptions=[
             _visual_slam_node(context),
-            _nvblox_node(),
+            _nvblox_node(context),
         ],
         output="screen",
+        # If the container still aborts (the documented VRAM/heap crash), respawn it so a
+        # one-off abort recovers instead of stranding every remaining trial on dead-
+        # reckoned odom. Combined with the reduced camera resolution + nvblox footprint,
+        # the crash should be rare; this is recovery-of-last-resort, not the primary fix.
+        respawn=True,
+        respawn_delay=3.0,
     ))
 
-    # robot_state_publisher publishes /robot_description ONLY for the RViz
-    # RobotModel; its /tf are dead-ended so it never competes with Isaac's TF.
-    actions.append(Node(
-        package="robot_state_publisher", executable="robot_state_publisher",
-        parameters=[{"use_sim_time": use_sim_time,
-                     "robot_description": _load_robot_description()}],
-        remappings=[("/tf", "/rsp_tf_unused"),
-                    ("/tf_static", "/rsp_tf_static_unused")],
-        output="screen",
-    ))
+    # robot_state_publisher publishes /robot_description ONLY for the RViz RobotModel;
+    # its /tf are dead-ended so it never competes with Isaac's TF. Launch it with RViz
+    # by default, or explicitly with use_robot_state_publisher:=true.
+    if (
+        _launch_bool(context, "use_rviz", default=True)
+        or _launch_bool(context, "use_robot_state_publisher", default=False)
+    ):
+        actions.append(Node(
+            package="robot_state_publisher", executable="robot_state_publisher",
+            parameters=[{"use_sim_time": use_sim_time,
+                         "robot_description": _load_robot_description()}],
+            remappings=[("/tf", "/rsp_tf_unused"),
+                        ("/tf_static", "/rsp_tf_static_unused")],
+            output="screen",
+        ))
 
     # Depth image -> XYZ cloud (no RGB) for the collision monitor + RViz. nvblox owns
     # the planning costmap; this is just a live safety/visualization obstacle source.
@@ -406,6 +496,54 @@ def _launch_setup(context, *args, **kwargs):
         ],
         output="screen",
     ))
+
+    # ── Co-equal lidar+visual localization fusion (use_localization_fusion) ──────
+    # rf2o turns /ugv_sim/scan into laser odometry (rotation-robust, and alive while
+    # cuVSLAM is stationary/initializing); cuvslam_pose_relay stamps a covariance on
+    # cuVSLAM's absolute map pose; the EKF fuses rf2o + wheel odom + that pose to OWN a
+    # continuous map->odom. This is what gives the global costmap a `map` frame from t=0
+    # instead of waiting for cuVSLAM to self-init. rf2o is vendored in ugv_ws
+    # (ugv_else/rf2o_laser_odometry); robot_localization comes from apt. All three stay
+    # off when use_localization_fusion:=false (then cuVSLAM broadcasts map->odom itself).
+    # NB: this is the LOCALIZATION use of the lidar only — the obstacle costmap is still
+    # nvblox (depth); /scan is never added to the Nav2 costmap here.
+    if _launch_bool(context, "use_localization_fusion", default=True):
+        ekf_config = _require_file(
+            _launch_value(context, "ekf_config", DEFAULT_EKF_CONFIG),
+            "robot_localization EKF config")
+        base_frame = _launch_value(context, "base_frame", DEFAULT_BASE_FRAME)
+        laser_frame = _launch_value(context, "laser_frame", DEFAULT_LASER_FRAME)
+        actions.append(Node(
+            package="rf2o_laser_odometry", executable="rf2o_laser_odometry_node",
+            name="rf2o_laser_odometry", output="screen",
+            parameters=[{
+                "use_sim_time": use_sim_time,
+                "laser_scan_topic": SCAN_TOPIC,
+                "odom_topic": LIDAR_ODOM_TOPIC,
+                # rf2o ALWAYS creates a publisher on imu_topic (CLaserOdometry2DNode.cpp),
+                # so an empty string throws InvalidTopicNameError and kills the node — it
+                # must be a valid (unused) name, NOT "". Nothing subscribes to it.
+                "imu_topic": "/cuvslam/rf2o_imu_unused",
+                "publish_tf": False,        # Isaac owns odom->base; the EKF owns map->odom
+                "base_frame_id": base_frame,
+                "odom_frame_id": "odom",
+                "init_pose_from_topic": "",
+                "freq": 20.0,
+            }],
+        ))
+        actions.append(ExecuteProcess(
+            cmd=[sys.executable, POSE_RELAY_SCRIPT, "--ros-args",
+                 "-p", ["use_sim_time:=", use_sim_time],
+                 "-p", f"input_topic:={CUVSLAM_SLAM_ODOM_TOPIC}",
+                 "-p", f"output_topic:={CUVSLAM_POSE_TOPIC}",
+                 "-p", f"base_frame:={base_frame}"],
+            output="screen",
+        ))
+        actions.append(Node(
+            package="robot_localization", executable="ekf_node",
+            name="ekf_filter_node", output="screen",
+            parameters=[ekf_config, {"use_sim_time": use_sim_time}],
+        ))
 
     # Nav2: the shared ugv_nav planner/controller/bt/behaviors, with the costmaps
     # rewritten to the nvblox layer. cuVSLAM supplies map->odom, so NO slam_toolbox,
@@ -433,6 +571,12 @@ def _launch_setup(context, *args, **kwargs):
         package="rviz2", executable="rviz2", name="rviz2",
         arguments=["-d", rviz_config],
         parameters=[{"use_sim_time": use_sim_time}],
+        # Force the nvblox RViz mesh plugin onto its fallback material (BaseWhiteNoLighting).
+        # Its default path sets the geometry program rviz/glsl150/box.geom, which this box's
+        # ros-humble-rviz-rendering 11.2.27 does not ship — so the NvbloxMesh display would
+        # otherwise abort RViz (exit -6). With the fallback it renders the mesh with a plain
+        # built-in material (no geometry shader), letting the 3D reconstruction show safely.
+        additional_env={"ISAAC_ROS_NVBLOX_PLUGIN_FORCE_FALLBACK_MATERIAL": "1"},
         output="screen",
     ))
     return actions
@@ -442,18 +586,51 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("use_sim_time", default_value="true",
                               description="Use the /clock published by Isaac Sim"),
-        DeclareLaunchArgument("use_localplan", default_value="teb",
+        DeclareLaunchArgument("use_localplan", default_value="rpp",
                               description="Nav2 local planner: teb, dwa, rpp, mppi "
-                                          "(shared ugv_nav default, same as the other "
-                                          "stacks; teb needs ros-humble-teb-local-planner)"),
+                                          "(default rpp for this cuVSLAM/nvblox stack; "
+                                          "teb is still available with use_localplan:=teb "
+                                          "but currently segfaults controller_server on "
+                                          "shutdown here)"),
         DeclareLaunchArgument("enable_imu_fusion", default_value="true",
                               description="Fuse /ugv_sim/imu/data in cuVSLAM (VIO); on by "
                                           "default. Disable with enable_imu_fusion:=false"),
+        DeclareLaunchArgument("map_save_path", default_value="",
+                              description="Folder cuVSLAM saves its map to on shutdown "
+                                          "(mapping run, Experiment A; e.g. .../experiments/"
+                                          "maps/warehouse/cuvslam_map). Empty = live SLAM"),
+        DeclareLaunchArgument("map_load_path", default_value="",
+                              description="Folder cuVSLAM loads a saved map from at startup "
+                                          "(localization run). Empty = live SLAM"),
+        DeclareLaunchArgument("localize_on_startup", default_value="true",
+                              description="With map_load_path, relocalize in the loaded map "
+                                          "at startup (identity hint = rover start). "
+                                          "Ignored unless map_load_path is set"),
         DeclareLaunchArgument("imu_frame", default_value="base_imu_link",
                               description="TF frame of the IMU (used iff enable_imu_fusion)"),
         DeclareLaunchArgument("enable_ground_constraint", default_value="true",
                               description="Constrain cuVSLAM to the ground plane "
                                           "(recommended for this planar rover)"),
+        DeclareLaunchArgument("use_localization_fusion", default_value="true",
+                              description="Fuse rf2o lidar odom + wheel odom + cuVSLAM "
+                                          "pose in a robot_localization EKF that owns "
+                                          "map->odom (continuous, robust to cuVSLAM "
+                                          "dropout). false = cuVSLAM broadcasts map->odom "
+                                          "itself (pure-visual, no lidar)"),
+        DeclareLaunchArgument("ekf_config", default_value="",
+                              description="robot_localization EKF config; defaults to "
+                                          "this stack's config/ekf_map_fusion.yaml"),
+        DeclareLaunchArgument("base_frame", default_value=DEFAULT_BASE_FRAME,
+                              description="Base frame the EKF fuses in (Isaac's odom child)"),
+        DeclareLaunchArgument("laser_frame", default_value=DEFAULT_LASER_FRAME,
+                              description="Lidar frame for rf2o laser odometry"),
+        DeclareLaunchArgument("low_gpu_memory", default_value="true",
+                              description="Trim nvblox VRAM (drop color layer, bound the "
+                                          "retained map) so Isaac RTX + cuVSLAM + nvblox fit "
+                                          "on an 8 GB GPU without CUDA OOM. false on big GPUs"),
+        DeclareLaunchArgument("nvblox_clearing_radius_m", default_value="6.0",
+                              description="Radius (m) of the retained nvblox map when "
+                                          "low_gpu_memory is on; smaller = less VRAM"),
         DeclareLaunchArgument("left_optical_frame", default_value=LEFT_OPTICAL_FRAME,
                               description="Left stereo camera optical frame (must match "
                                           "the left camera_info header frame Isaac "
@@ -465,6 +642,11 @@ def generate_launch_description():
         DeclareLaunchArgument("global_costmap_size", default_value="20.0",
                               description="Rolling global costmap side length (m); this "
                                           "stack has no /map occupancy grid"),
+        DeclareLaunchArgument("transform_tolerance", default_value="1.5",
+                              description="Costmap TF staleness tolerance (s). Raised from "
+                                          "Nav2's 0.3 default because the slow/jittery sim "
+                                          "skews goal vs map->odom timestamps ~1 s, which "
+                                          "otherwise aborts planning into a recovery-spin loop"),
         DeclareLaunchArgument("depth_min_height", default_value="0.08",
                               description="Min height (m) of collision-monitor depth points"),
         DeclareLaunchArgument("depth_max_height", default_value="1.5",
@@ -473,6 +655,10 @@ def generate_launch_description():
                               description="depth+camera_info sync queue for the depth cloud"),
         DeclareLaunchArgument("rviz_config", default_value="",
                               description="RViz config; defaults to this stack's view"),
+        DeclareLaunchArgument("use_robot_state_publisher", default_value="false",
+                              description="Run robot_state_publisher from the URDF for "
+                                          "RViz RobotModel even when RViz is disabled. "
+                                          "RViz launches it automatically."),
         DeclareLaunchArgument("autostart", default_value="true",
                               description="Automatically start the nav2 stack"),
         DeclareLaunchArgument("use_composition", default_value="False",
@@ -482,6 +668,9 @@ def generate_launch_description():
         DeclareLaunchArgument("log_level", default_value="info",
                               description="Nav2 log level"),
         DeclareLaunchArgument("use_rviz", default_value="true",
-                              description="Launch RViz with the nvblox navigation view"),
+                              description="Launch RViz with the nvblox navigation view. "
+                                          "The default config avoids PointCloud/LaserScan "
+                                          "displays that trip this machine's missing "
+                                          "glsl150/box.geom shader."),
         OpaqueFunction(function=_launch_setup),
     ])

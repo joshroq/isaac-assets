@@ -73,9 +73,13 @@ export PATH="$(_strip_ros "${PATH:-}")"
 export ROS_DISTRO
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+# The baked runner uses ordinary DDS discovery. Match ros2env.sh even when
+# ~/.bashrc exports localhost-only for other ROS sessions.
+export ROS_LOCALHOST_ONLY="${ISAAC_ROS_LOCALHOST_ONLY:-0}"
+unset ROS_DISCOVERY_SERVER
 
 echo "[isaacpy_clean] system ROS scrubbed from PYTHONPATH; using Isaac's bundled py3.12 rclpy."
 echo "[isaacpy_clean] bundled ROS Python packages on PYTHONPATH: $INTERNAL_RCLPY"
 echo "[isaacpy_clean] bundled ROS libs on LD_LIBRARY_PATH: $INTERNAL_LIB"
-echo "[isaacpy_clean] ROS_DISTRO=$ROS_DISTRO  ROS_DOMAIN_ID=$ROS_DOMAIN_ID  RMW=$RMW_IMPLEMENTATION"
+echo "[isaacpy_clean] ROS_DISTRO=$ROS_DISTRO  ROS_DOMAIN_ID=$ROS_DOMAIN_ID  RMW=$RMW_IMPLEMENTATION  ROS_LOCALHOST_ONLY=$ROS_LOCALHOST_ONLY"
 exec "$ISAAC_PY" "$@"

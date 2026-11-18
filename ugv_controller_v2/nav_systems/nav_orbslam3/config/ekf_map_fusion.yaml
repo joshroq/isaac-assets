@@ -77,7 +77,12 @@ ekf_filter_node:
         odom2_nodelay: true
         odom2_differential: false
         odom2_relative: false
-        odom2_pose_rejection_threshold: 20.0
+        # ORB-SLAM3 emits large discontinuous pose jumps on every active-map reset /
+        # relocalization (hundreds per run in this scene). At 20.0 the filter accepted
+        # jumps up to 20 m, yanking map->odom and sending Nav2 chasing a phantom pose
+        # (the cold-start wandering). Tighten to reject post-reset teleports while still
+        # admitting genuine drift corrections (the sweep keeps real steps well under 5 m).
+        odom2_pose_rejection_threshold: 5.0
 
         process_noise_covariance: [0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
                                    0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,

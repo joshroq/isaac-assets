@@ -91,6 +91,17 @@ RUN (Isaac running the baked rover elsewhere):
   ros2 launch <this file> orbslam_viewer:=false        # drop ORB-SLAM3's own windows
   ros2 launch <this file> settings:=<orbslam3.yaml>    # pin intrinsics by hand
 
+KNOWN-MAP MODE (thesis Experiment A — build an ORB-SLAM3 atlas once, then localize):
+  # 0) ONE-TIME: rebuild the wrapper so load_atlas/save_atlas/localization_mode exist:
+  #      ./build.sh
+  # 1) mapping run: drive the environment; atlas saved to <base>.osa on exit (Ctrl-C)
+  ros2 launch <this file> \
+      save_atlas:=<repo>/experiments/maps/warehouse/orbslam3_atlas
+  # 2) per-trial localization run: load that atlas + localization-only, no priming drive
+  ros2 launch <this file> localization_mode:=true \
+      load_atlas:=<repo>/experiments/maps/warehouse/orbslam3_atlas
+Default (no atlas args) is unchanged: live ORB-SLAM3 mapping.
+
 VISUALIZATION: two views run at once. RViz shows the Nav2 world (costmaps, plans, the
 sparse map points as a cloud), while ORB-SLAM3's OWN viewer (orbslam_viewer, ON by
 default) opens its native Pangolin "Map Viewer" (keyframe graph + map points, with the
@@ -344,6 +355,10 @@ def _launch_setup(context, *args, **kwargs):
             "publish_tf": not use_fusion,
             "publish_pose": use_fusion,
             "pose_topic": ORBSLAM_POSE_TOPIC,
+            # Atlas persistence (Experiment A). Empty/false = live mapping (unchanged).
+            "load_atlas": LaunchConfiguration("load_atlas"),
+            "save_atlas": LaunchConfiguration("save_atlas"),
+            "localization_mode": LaunchConfiguration("localization_mode"),
         }],
         respawn=use_respawn, respawn_delay=2.0,
         output="screen",
@@ -384,7 +399,9 @@ def _launch_setup(context, *args, **kwargs):
                 "use_sim_time": use_sim_time,
                 "laser_scan_topic": SCAN_TOPIC,
                 "odom_topic": LIDAR_ODOM_TOPIC,
-                "imu_topic": "",            # no IMU seed; the EKF supplies the heading
+                # rf2o ALWAYS creates a publisher on imu_topic, so "" throws
+                # InvalidTopicNameError and kills the node — use a valid unused name.
+                "imu_topic": "/orbslam3/rf2o_imu_unused",
                 "publish_tf": False,        # Isaac owns odom->base; the EKF owns map->odom
                 "base_frame_id": base_frame,
                 "odom_frame_id": "odom",
@@ -505,6 +522,20 @@ def generate_launch_description():
         DeclareLaunchArgument("ekf_config", default_value=DEFAULT_EKF_CONFIG,
                               description="robot_localization EKF params for the fused "
                                           "map->odom (used when use_localization_fusion)"),
+        DeclareLaunchArgument("save_atlas", default_value="",
+                              description="Base path (no extension) ORB-SLAM3 saves its "
+                                          "atlas to on exit -> <path>.osa (mapping run, "
+                                          "Experiment A; e.g. .../experiments/maps/"
+                                          "warehouse/orbslam3_atlas). Empty = live mapping. "
+                                          "Needs the wrapper rebuilt (./build.sh)"),
+        DeclareLaunchArgument("load_atlas", default_value="",
+                              description="Base path (no extension) ORB-SLAM3 loads its "
+                                          "atlas from at startup -> <path>.osa "
+                                          "(localization run). Empty = live mapping"),
+        DeclareLaunchArgument("localization_mode", default_value="false",
+                              description="Call ActivateLocalizationMode(): relocalize + "
+                                          "track against the loaded atlas without adding "
+                                          "keyframes. Pair with load_atlas (Experiment A)"),
         DeclareLaunchArgument("rviz_config", default_value="",
                               description="RViz config; defaults to this v2 ORB-SLAM3 view"),
         DeclareLaunchArgument("autostart", default_value="true",

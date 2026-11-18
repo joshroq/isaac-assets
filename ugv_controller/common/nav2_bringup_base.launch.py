@@ -42,7 +42,7 @@ from nav2_common.launch import RewrittenYaml
 # Absolute paths into the existing (unbuilt) workspace source tree. The ugv_ws
 # location is independent of this folder, so these are unaffected by the reorg.
 UGV_WS_SRC = "/home/joshroq/projects/isaac-assets/ugv_ws/src/ugv_main"
-URDF_PATH = os.path.join(UGV_WS_SRC, "ugv_description", "urdf", "ugv_rover.urdf")
+URDF_PATH = os.path.join(UGV_WS_SRC, "ugv_description", "urdf", "ugv_rover_isaac_fixed.urdf")
 UGV_DESCRIPTION_SRC = os.path.join(UGV_WS_SRC, "ugv_description")
 # Upstream ugv_ws (ros2-humble-develop-251125) replaced the monolithic
 # param/slam_nav.yaml with a per-local-planner params/ layout. rpp.yaml is the full
@@ -58,7 +58,10 @@ def _load_robot_description():
         robot_description = f.read()
 
     mesh_root = "file://" + UGV_DESCRIPTION_SRC.rstrip("/") + "/"
-    return robot_description.replace("package://ugv_description/", mesh_root)
+    # Share Isaac geometry; retain the legacy camera TF name used by this stack.
+    return (robot_description.replace("../meshes/", mesh_root + "meshes/")
+            .replace("package://ugv_description/", mesh_root)
+            .replace("front_camera_link", "3d_camera_link"))
 
 
 def generate_launch_description():

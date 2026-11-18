@@ -14,7 +14,7 @@
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, GroupAction, SetEnvironmentVariable
@@ -42,9 +42,17 @@ def launch_setup(context, *args, **kwargs):
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
 
-    ugv_cartographer_prefix = get_package_share_directory('cartographer')
-    cartographer_config_dir = LaunchConfiguration('cartographer_config_dir', default=os.path.join(
-                                                  ugv_cartographer_prefix, 'config'))
+    # cartographer is an OPTIONAL localizer here (use_localization:=cartographer). Its
+    # share dir is only needed for that branch, but this line runs unconditionally at
+    # launch-build time, so a missing cartographer package (it is not built in this
+    # workspace) would abort EVERY localization launch — including amcl known-map, which
+    # never touches cartographer. Guard it so only the cartographer branch requires it.
+    try:
+        ugv_cartographer_prefix = get_package_share_directory('cartographer')
+        cartographer_config_dir = LaunchConfiguration('cartographer_config_dir', default=os.path.join(
+                                                      ugv_cartographer_prefix, 'config'))
+    except PackageNotFoundError:
+        cartographer_config_dir = LaunchConfiguration('cartographer_config_dir', default='')
     configuration_basename = LaunchConfiguration('configuration_basename',
                                                  default='localization_2d.lua')
  

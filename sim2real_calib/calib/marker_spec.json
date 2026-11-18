@@ -1,0 +1,6 @@
+{
+  "dictionary": "DICT_5X5_100",
+  "id": 0,
+  "marker_len_m": 0.06,
+  "note": "Matches the 5x5 id0 tag physically on the rover. Tracking uses the grid homography on the marker centre (not marker_len_m), so the metre value here is informational; set it if you ever need PnP."
+}

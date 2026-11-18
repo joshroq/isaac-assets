@@ -44,16 +44,18 @@ def _parse_args() -> argparse.Namespace:
         "--headless", action="store_true",
         help="Run without the Isaac viewport (topics still publish).",
     )
+    _default_res = (
+        "native" if DEFAULT_CAMERA_RESOLUTION is None
+        else "x".join(map(str, DEFAULT_CAMERA_RESOLUTION))
+    )
     parser.add_argument(
         "--camera-res", "--camera_res", dest="camera_resolution",
         type=_parse_camera_res,
-        default="x".join(map(str, DEFAULT_CAMERA_RESOLUTION)),
+        default=_default_res,
         help=(
-            "Camera render-product resolution as WxH (default "
-            f"{DEFAULT_CAMERA_RESOLUTION[0]}x{DEFAULT_CAMERA_RESOLUTION[1]}, the "
-            "OAK-D-Lite hardware resolution). Lower = higher RGB/depth/stereo "
-            "publish rate when cuVSLAM + nvblox share the GPU. Use 'native' for "
-            "Isaac's 1280x720 default."
+            f"Camera render-product resolution as WxH (default '{_default_res}'; "
+            "'native' = Isaac's 1280x720, correct square-pixel intrinsics). Pass a "
+            "smaller WxH (e.g. 512x384) only to cut VRAM on a small GPU."
         ),
     )
     parser.add_argument(

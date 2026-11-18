@@ -1,0 +1,15 @@
+surface: live
+combine_mode: min
+calibrated_param: wheel_distance
+maneuver: T2_spin
+before:
+  value: 0.5
+  omega_ss: 0.5731307262266185
+after:
+  value: 0.3036257302130857
+  omega_ss: 0.2066609642035419
+real_target:
+  omega_ss: 0.1852776641795038
+sim_calibration_yaml:
+  differential_controller:
+    wheelDistance: 0.3036257302130857

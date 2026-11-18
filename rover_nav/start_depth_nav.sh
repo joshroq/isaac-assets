@@ -1,6 +1,10 @@
 #!/bin/bash
-# LiDAR SLAM + Nav2 + OAK-D depth obstacle cloud. Needs start_bringup.sh AND start_oak.sh running.
+# LiDAR SLAM + Nav2 + OAK-D depth obstacle cloud.
+# SELF-CONTAINED base: nav.launch.py starts its OWN ugv_bringup (motors/LD19/odom/rf2o/TF),
+# so do NOT also run start_bringup.sh (a second bringup double-opens /dev/ttyTHS1 and shreds
+# the ESP32 feedback). You DO need start_oak.sh running for the depth cloud (/oak/stereo).
 source ~/rover_nav/local_ros_env.sh
+source ~/rover_nav/_check_single_stack.sh
 P=~/ugv_ws/src/ugv_main/ugv_nav/param/amcl_dwa.yaml
 B=~/rover_nav/param_backups/amcl_dwa.yaml.orig
 [ -f "$B" ] || cp "$P" "$B"            # preserve pristine copy once

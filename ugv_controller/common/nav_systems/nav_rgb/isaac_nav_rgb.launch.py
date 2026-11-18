@@ -53,7 +53,7 @@ from launch_ros.actions import Node
 # rewrite package:// mesh URIs to file:// so robot_state_publisher needs no install.
 UGV_WS_SRC = "/home/joshroq/projects/isaac-assets/ugv_ws/src/ugv_main"
 UGV_DESCRIPTION_SRC = os.path.join(UGV_WS_SRC, "ugv_description")
-URDF_PATH = os.path.join(UGV_DESCRIPTION_SRC, "urdf", "ugv_rover.urdf")
+URDF_PATH = os.path.join(UGV_DESCRIPTION_SRC, "urdf", "ugv_rover_isaac_fixed.urdf")
 
 # Nav2 param file per local planner — exactly the mapping upstream nav.launch.py uses.
 _LOCALPLAN_CHOICES = ("teb", "dwa", "rpp", "mppi")
@@ -75,7 +75,10 @@ def _load_robot_description() -> str:
     with open(URDF_PATH, "r") as f:
         robot_description = f.read()
     mesh_root = "file://" + UGV_DESCRIPTION_SRC.rstrip("/") + "/"
-    return robot_description.replace("package://ugv_description/", mesh_root)
+    # Share Isaac geometry; retain the legacy camera TF name used by this stack.
+    return (robot_description.replace("../meshes/", mesh_root + "meshes/")
+            .replace("package://ugv_description/", mesh_root)
+            .replace("front_camera_link", "3d_camera_link"))
 
 
 def _require_file(path: str, label: str) -> str:

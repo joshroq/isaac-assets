@@ -1,0 +1,62 @@
+surface: heavy_carpet
+combine_mode: min
+geometry:
+  wheel_radius: 0.04
+  base_mass: 1.40495
+  wheel_mass: 0.08
+calibrated:
+  wheel_distance: 0.7055537084818984
+  max_linear_speed: 0.44
+  max_angular_speed: 1.9
+  corner_mu_dynamic: 1.1303065126978815
+  corner_mu_static: 1.1824971645135227
+  middle_mu_dynamic: 0.65
+  middle_mu_static: 0.8
+  floor_mu_dynamic: 0.41666383949396296
+  floor_mu_static: 0.8156249005136895
+  drive_damping: 10000.0
+  drive_max_force: 3.4028235e+38
+  base_linear_damping: 1.9143509775628516
+  base_angular_damping: 5.837081533578389
+stage_results:
+  speed-clamps:
+    max_linear_speed: 0.44
+    max_angular_speed: 1.9
+  friction:
+    corner_mu_dynamic: 1.1303065126978815
+    corner_mu_static: 1.1824971645135227
+    floor_mu_dynamic: 0.41666383949396296
+    floor_mu_static: 0.8156249005136895
+    loss: 53.961889291719515
+  rolling-resistance:
+    base_linear_damping: 1.9143509775628516
+    base_angular_damping: 5.837081533578389
+    loss: 4.94301068897402e-05
+  skid-steer:
+    wheel_distance: 0.7055537084818984
+    loss: 5.385274104004861
+sim_calibration_yaml:
+  differential_controller:
+    wheelRadius: 0.04
+    wheelDistance: 0.7055537084818984
+    maxLinearSpeed: 0.44
+    maxAngularSpeed: 1.9
+  mass:
+    base_link: 1.40495
+    wheel: 0.08
+  wheel_friction:
+    corner_wheel:
+      dynamicFriction: 1.1303065126978815
+      staticFriction: 1.1824971645135227
+    middle_wheel:
+      dynamicFriction: 0.65
+      staticFriction: 0.8
+  floor_friction:
+    dynamicFriction: 0.41666383949396296
+    staticFriction: 0.8156249005136895
+  wheel_drive:
+    damping: 10000.0
+    maxForce: 3.4028235e+38
+  drag:
+    base_linear_damping: 1.9143509775628516
+    base_angular_damping: 5.837081533578389

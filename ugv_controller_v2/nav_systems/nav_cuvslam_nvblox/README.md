@@ -4,13 +4,39 @@
 
 | aspect | value |
 |---|---|
-| Localization | Isaac ROS Visual SLAM / cuVSLAM (RGB-D, IMU optional) |
+| Localization | cuVSLAM + rf2o lidar odom + wheel odom, fused by a robot_localization EKF (default); `use_localization_fusion:=false` = pure cuVSLAM |
 | Obstacle / costmap | nvblox depth reconstruction → ESDF 2D slice → Nav2 `nvblox_layer` |
 | RGB used | yes |
 | Depth used | yes |
-| LiDAR used | **no** (never used for localization or costmap) |
+| LiDAR used | **localization only, by default** (rf2o `/scan` odom into the EKF); never a costmap layer |
 | IMU used | yes, by default (cuVSLAM VIO; `enable_imu_fusion:=false` to disable) |
 | Role | NVIDIA visual-depth navigation stack |
+
+### Localization fusion (why the global costmap now comes up)
+
+By default a **robot_localization EKF owns `map→odom`**, fusing Isaac wheel odom +
+**rf2o laser odometry** (`/ugv_sim/scan`) + cuVSLAM's absolute map pose
+(`visual_slam/vis/slam_odometry`, covariance-stamped by `cuvslam_pose_relay.py`).
+This is ported straight from `nav_orbslam3` (`config/ekf_map_fusion.yaml`). The point:
+pure cuVSLAM only publishes `map→odom` once it is *tracking*, and it doesn't track when
+the rover is stationary, rotating in place, or while the camera stream is starved — so
+the global costmap had **no `map` frame** and you couldn't place a goal. With the EKF,
+the wheel + lidar velocities keep `map→odom` alive from t=0 (map frame exists
+immediately → global costmap comes up), and cuVSLAM corrects drift when it is tracking.
+Prereqs (same as `nav_orbslam3`): `rf2o_laser_odometry` built in `ugv_ws` and
+`ros-humble-robot-localization` installed.
+
+```bash
+navlaunch -cuvslam                                   # EKF fusion (lidar+wheel+cuVSLAM), default
+navlaunch -cuvslam use_localization_fusion:=false    # pure cuVSLAM map->odom (no lidar/EKF)
+```
+
+**For repeatable A→B trials:** the EKF gives a *robust* `map→odom`, but repeatability of
+a goal coordinate across runs still needs a *consistent* `map` origin. In sim, if the
+rover always starts at the same pose, the EKF's `map` frame is defined at that start, so
+goals are repeatable relative to it. For hard cross-run/real-world repeatability, pair
+this with a saved map + relocalization (cuVSLAM can save/load a map; or use `nav_lidar`'s
+`use_localization:=amcl` + saved posegraph as the metric-repeatable reference).
 
 ## Pipeline
 
@@ -184,13 +210,22 @@ not `ros2 topic hz` — the sim runs slower than wall-clock):
 ros2 topic hz /ugv_sim/oak/rgb/image_rect /ugv_sim/oak/stereo/image_raw
 ```
 
-**RViz under load:** if RViz still dies with
-`Unable to locate geometry program called rviz/glsl150/box.geom` (an Ogre
-shader-program load failure under GPU pressure), launch the stack with
-`use_rviz:=false` and start RViz standalone once cuVSLAM/nvblox have warmed up:
-`rviz2 -d ugv_controller_v2/nav_systems/nav_cuvslam_nvblox/isaac_cuvslam_nvblox_nav.rviz`.
 This RViz view is anchored to `odom` (not `map`) so the robot model and nvblox mesh
 appear immediately, without waiting for cuVSLAM to publish `map->odom`.
+
+**RViz `box.geom` crash (not a GPU problem):** this machine's
+`ros-humble-rviz-rendering` 11.2.27 ships an *incomplete* GLSL150 media set — its
+`.../rviz_rendering/ogre_media/materials/scripts/` has only `point_cloud_point` and
+`point_cloud_tile` materials; the `box`/`flat_square`/`sphere` geometry-shader
+materials are missing. Any point display rendered as **Flat Squares/Squares/Boxes/
+Spheres** then throws `Unable to locate geometry program rviz/glsl150/box.geom` and
+aborts RViz (the robot model still renders first, which is why it looks load-related
+but isn't). This config now uses **Style: Points** for the depth cloud + laser, which
+maps to the material that IS present. Proper system fix (restores all styles):
+`sudo apt install --reinstall ros-humble-rviz-rendering` (or downgrade to a build
+whose GLSL150 media is complete). RViz/cuVSLAM/Nav2 are separate processes — if RViz
+ever dies, cuVSLAM + nvblox + Nav2 keep running; you can also launch with
+`use_rviz:=false` and start RViz standalone later.
 
 Like the other visual front-ends, cuVSLAM only broadcasts `map->odom` once it is
 tracking, and it starts tracking after it sees motion through textured scenery.

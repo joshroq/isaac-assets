@@ -136,6 +136,20 @@ public:
     gen_.min_th_fast = declare_parameter<int>("orb_min_th_fast", 7);
     gen_.out_path = declare_parameter<std::string>("generated_settings_path", "");
 
+    // ── Atlas map persistence (thesis Experiment A: known-map localization) ──────
+    // ORB-SLAM3 loads/saves its multi-map "atlas" via the settings-file keys
+    // System.LoadAtlasFromFile / System.SaveAtlasToFile (base path, no extension; it
+    // reads/writes "<path>.osa"). We inject those into the GENERATED settings so the
+    // default camera_info-driven flow works. localization_mode calls
+    // System::ActivateLocalizationMode() so ORB-SLAM3 stops adding keyframes and only
+    // relocalizes+tracks against the loaded atlas. All default empty/false = the
+    // original live-mapping behavior, so nothing changes unless you opt in.
+    //   mapping run       : save_atlas:=<base>            (writes <base>.osa on exit)
+    //   localization run  : load_atlas:=<base> localization_mode:=true
+    load_atlas_ = declare_parameter<std::string>("load_atlas", "");
+    save_atlas_ = declare_parameter<std::string>("save_atlas", "");
+    localization_mode_ = declare_parameter<bool>("localization_mode", false);
+
     // ── TF ────────────────────────────────────────────────────────────────────
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -256,6 +270,12 @@ private:
       << "Viewer.ViewpointY: -0.7\n"
       << "Viewer.ViewpointZ: -1.8\n"
       << "Viewer.ViewpointF: 500.0\n";
+    // Atlas persistence keys (base path, no extension -> ORB-SLAM3 uses "<path>.osa").
+    // Only emitted when opted in; absent by default so the map is built live as before.
+    if (!load_atlas_.empty())
+      f << "\nSystem.LoadAtlasFromFile: \"" << load_atlas_ << "\"\n";
+    if (!save_atlas_.empty())
+      f << "System.SaveAtlasToFile: \"" << save_atlas_ << "\"\n";
     f.close();
 
     RCLCPP_INFO(get_logger(),
@@ -268,9 +288,26 @@ private:
 
   void startSlam(const std::string & settings_file)
   {
-    RCLCPP_INFO(get_logger(), "Loading ORB-SLAM3 vocabulary + settings (RGB-D)...");
+    // Atlas keys live in the settings file. We inject them into the GENERATED settings;
+    // with a hand-passed settings:=<file> you must add System.LoadAtlasFromFile /
+    // SaveAtlasToFile yourself, so warn rather than silently ignore the request.
+    if (!settings_.empty() && (!load_atlas_.empty() || !save_atlas_.empty())) {
+      RCLCPP_WARN(get_logger(),
+                  "load_atlas/save_atlas are only injected into the GENERATED settings "
+                  "(settings:=''). With an explicit settings file, add "
+                  "System.LoadAtlasFromFile / System.SaveAtlasToFile to it yourself.");
+    }
+    RCLCPP_INFO(get_logger(), "Loading ORB-SLAM3 vocabulary + settings (RGB-D)%s...",
+                localization_mode_ ? " [LOCALIZATION MODE]" : "");
     slam_ = std::make_unique<ORB_SLAM3::System>(
         vocab_, settings_file, ORB_SLAM3::System::RGBD, use_viewer_);
+    if (localization_mode_) {
+      // Stop local mapping / loop-closing map growth: pure relocalization + tracking
+      // against the loaded atlas (Experiment A). Takes effect on the next TrackRGBD.
+      slam_->ActivateLocalizationMode();
+      RCLCPP_INFO(get_logger(), "ORB-SLAM3 localization mode ON: relocalizing in the "
+                                "loaded atlas (no new keyframes).");
+    }
     RCLCPP_INFO(get_logger(), "ORB-SLAM3 running. Drive the rover to initialize tracking.");
   }
 
@@ -453,6 +490,8 @@ private:
   double depth_min_{0.1}, depth_max_{10.0};
   double pose_cov_xy_{0.02}, pose_cov_yaw_{0.02};
   GenSettings gen_{};
+  std::string load_atlas_, save_atlas_;
+  bool localization_mode_{false};
 
   std::unique_ptr<ORB_SLAM3::System> slam_;
 

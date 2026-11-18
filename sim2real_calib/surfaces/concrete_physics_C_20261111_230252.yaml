@@ -1,0 +1,68 @@
+surface: concrete
+combine_mode: average
+floor_friction_band:
+  static:
+  - 0.6
+  - 1.0
+  dynamic:
+  - 0.5
+  - 0.85
+measured:
+  base_mass: 1.40495
+  wheel_mass: 0.08
+calibrated:
+  wheel_distance: 0.3192267916537822
+  max_linear_speed: 0.6200000000000001
+  max_angular_speed: 2.7799999999999994
+  max_acceleration: 2.562073087108252
+  max_deceleration: 3.9742155978216283
+  max_angular_acceleration: 5.863822774744856
+  corner_mu_dynamic: 1.1321514576673506
+  corner_mu_static: 1.1702475758269415
+  middle_mu_dynamic: 0.9325492476299404
+  middle_mu_static: 1.1115590520203116
+  floor_mu_dynamic: 0.6756586109101772
+  floor_mu_static: 0.8387980830669388
+  drive_damping: 4737.763924962341
+  drive_max_force: 8.85318337301757
+  base_linear_damping: 0.0
+  base_angular_damping: 0.05
+fixed: {}
+stage_results:
+  iteration_1:
+    wheel_distance: 0.3192267916537822
+    corner_mu_dynamic: 1.1321514576673506
+    corner_mu_static: 1.1702475758269415
+    middle_mu_dynamic: 0.9325492476299404
+    middle_mu_static: 1.1115590520203116
+    floor_mu_dynamic: 0.6756586109101772
+    floor_mu_static: 0.8387980830669388
+    drive_max_force: 8.85318337301757
+    rms_z: 1.7251526640727872
+sim_calibration_yaml:
+  mass:
+    base_link: 1.40495
+    wheel: 0.08
+  differential_controller:
+    wheelDistance: 0.3192267916537822
+    maxLinearSpeed: 0.6200000000000001
+    maxAngularSpeed: 2.7799999999999994
+    maxAcceleration: 2.562073087108252
+    maxDeceleration: 3.9742155978216283
+    maxAngularAcceleration: 5.863822774744856
+  wheel_friction:
+    corner_wheel:
+      dynamicFriction: 1.1321514576673506
+      staticFriction: 1.1702475758269415
+    middle_wheel:
+      dynamicFriction: 0.9325492476299404
+      staticFriction: 1.1115590520203116
+  floor_friction:
+    dynamicFriction: 0.6756586109101772
+    staticFriction: 0.8387980830669388
+  wheel_drive:
+    damping: 4737.763924962341
+    maxForce: 8.85318337301757
+  drag:
+    base_linear_damping: 0.0
+    base_angular_damping: 0.05

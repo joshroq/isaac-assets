@@ -1,0 +1,21 @@
+# Smallest course: an open square on the 1 m x 1 m grid (no obstacles inside).
+# Use it to shake the system down before building the bigger arenas.
+#
+# BUILD IT (real rover): four wall panels (>= 0.40 m tall) 0.40 m outside the grid.
+name: grid1x1_square
+description: >
+  Open-square loop on the 1 m grid: three corners counter-clockwise then home.
+  Short legs; mostly exercises turning at goals and the goal checker.
+start: {x: 0.20, y: 0.20, yaw_deg: 0}
+goals:
+  - {name: G1, x: 0.80, y: 0.20, yaw_deg: 90}
+  - {name: G2, x: 0.80, y: 0.80, yaw_deg: 180}
+  - {name: G3, x: 0.20, y: 0.80, yaw_deg: -90}
+return_to_start: true
+goal_timeout_s: 60
+walls:
+  - {name: south, from: [-0.40, -0.40], to: [1.40, -0.40], height: 0.40}
+  - {name: east,  from: [1.40, -0.40],  to: [1.40, 1.40],  height: 0.40}
+  - {name: north, from: [1.40, 1.40],   to: [-0.40, 1.40], height: 0.40}
+  - {name: west,  from: [-0.40, 1.40],  to: [-0.40, -0.40], height: 0.40}
+fence: {xmin: -0.30, xmax: 1.30, ymin: -0.30, ymax: 1.30}

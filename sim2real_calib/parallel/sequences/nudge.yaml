@@ -1,0 +1,6 @@
+name: nudge
+# tiny safe proof move: forward ~0.2 m then stop
+steps:
+  - {linear: 0.00, angular: 0.0, duration: 1.0}
+  - {linear: 0.10, angular: 0.0, duration: 2.0}
+  - {linear: 0.00, angular: 0.0, duration: 1.5}

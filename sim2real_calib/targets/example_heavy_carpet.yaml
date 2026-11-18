@@ -1,0 +1,84 @@
+surface: heavy_carpet
+combine_mode: min
+top_speed:
+  linear: 0.44
+  angular: 1.9
+tests:
+  T1_straight:
+    sequence:
+    - linear: 0
+      angular: 0
+      duration: 1.0
+    - linear: 0.35
+      angular: 0
+      duration: 2.5
+    - linear: 0
+      angular: 0
+      duration: 2.0
+    features:
+      v_ss:
+        mean: 0.34446
+        sigma: 0.010333920923524472
+      dist:
+        mean: 0.82707
+        sigma: 0.024812217261941154
+      tau_v:
+        mean: 0.13
+        sigma: 0.0039000000000000033
+      coast_time:
+        mean: 0.12
+        sigma: 0.003599999999999923
+      coast_dist:
+        mean: 0.01792
+        sigma: 0.001
+  T3_sweep:
+    sequence:
+    - linear: 0
+      angular: 0
+      duration: 0.5
+    - linear: 0.5
+      angular: 0
+      duration: 2.5
+    - linear: 0
+      angular: 0
+      duration: 1.5
+    features:
+      v_ss:
+        mean: 0.43203
+        sigma: 0.012960820952492234
+      dist:
+        mean: 1.0255
+        sigma: 0.030764985961380203
+      tau_v:
+        mean: 0.17
+        sigma: 0.005100000000000005
+      coast_time:
+        mean: 0.16
+        sigma: 0.004799999999999897
+      coast_dist:
+        mean: 0.03036
+        sigma: 0.001
+  T2_spin:
+    sequence:
+    - linear: 0
+      angular: 0
+      duration: 1.0
+    - linear: 0
+      angular: 0.6
+      duration: 3.0
+    - linear: 0
+      angular: 0
+      duration: 1.0
+    features:
+      omega_ss:
+        mean: 1.41155
+        sigma: 0.04234655069713324
+      dyaw:
+        mean: 4.20035
+        sigma: 0.12601050309867703
+      tau_omega:
+        mean: 0.03
+        sigma: 0.001
+      turn_walk:
+        mean: 0.0
+        sigma: 0.001

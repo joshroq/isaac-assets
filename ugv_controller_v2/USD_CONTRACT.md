@@ -20,9 +20,16 @@ see `tools/repair_drive_graph.py`). Now: `OnPlaybackTick` →
 `IsaacArticulationController` nodes (`robotPath=/World/ugv_rover/base_footprint`)
 driving the four corner wheels
 (`left_up`, `left_down`, `right_up`, `right_down` `_wheel_link_joint`).
-Params baked: `wheel_radius=0.04`, `wheel_distance=0.175`,
+Params baked (audited 2026-10-07): `wheel_radius=0.04`, `wheel_distance=0.5`,
 `max_linear_speed=0.5`, `max_angular_speed=1.9`. `/cmd_vel` is plain/global (the
 shared command bus). The skid-steer math lives entirely in this graph.
+
+`wheel_distance` is the calibrated effective skid-steer track; physical wheel
+track is 0.17452 m. The `base_link_fixed2.stl` replacement preserves wheel mounts,
+so the drive inputs do not require rescaling. Its upper deck and sensor/arm
+mounts move up by 45.7 mm. The TF graphs read these corrected USD prim transforms
+on playback, including the stronger camera-position overrides in both scenes.
+See [the chassis geometry audit](BASE_MESH_UPDATE.md).
 
 ### The OmniGraphs under `/ROS2_Graphs` — normalized state (2026-07-08)
 

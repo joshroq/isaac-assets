@@ -1,0 +1,510 @@
+{
+  "asset": "jetson_rover_v2.usd",
+  "meters_per_unit": 1.0,
+  "up_axis": "Z",
+  "schema_count": 19,
+  "searchable_count": 9,
+  "frozen_keys": [
+    "wheel_radius",
+    "base_mass",
+    "wheel_mass"
+  ],
+  "parameters": [
+    {
+      "key": "wheel_radius",
+      "yaml_path": "differential_controller.wheelRadius",
+      "schema_default": 0.04,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:wheelRadius",
+          "resolved_value": 0.04,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "wheel_distance",
+      "yaml_path": "differential_controller.wheelDistance",
+      "schema_default": 0.5,
+      "bounds": [
+        0.25,
+        0.9
+      ],
+      "stage": 4,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:wheelDistance",
+          "resolved_value": 0.5,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "max_linear_speed",
+      "yaml_path": "differential_controller.maxLinearSpeed",
+      "schema_default": 0.5,
+      "bounds": [
+        0.2,
+        0.8
+      ],
+      "stage": 3,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:maxLinearSpeed",
+          "resolved_value": 0.5,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "max_angular_speed",
+      "yaml_path": "differential_controller.maxAngularSpeed",
+      "schema_default": 1.9,
+      "bounds": [
+        0.8,
+        3.0
+      ],
+      "stage": 3,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:maxAngularSpeed",
+          "resolved_value": 1.9,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "max_acceleration",
+      "yaml_path": "differential_controller.maxAcceleration",
+      "schema_default": 0.0,
+      "bounds": [
+        0.2,
+        5.0
+      ],
+      "stage": 2,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:maxAcceleration",
+          "resolved_value": 0.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "max_deceleration",
+      "yaml_path": "differential_controller.maxDeceleration",
+      "schema_default": 0.0,
+      "bounds": [
+        0.2,
+        8.0
+      ],
+      "stage": 2,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:maxDeceleration",
+          "resolved_value": 0.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "max_angular_acceleration",
+      "yaml_path": "differential_controller.maxAngularAcceleration",
+      "schema_default": 0.0,
+      "bounds": [
+        0.5,
+        20.0
+      ],
+      "stage": 2,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController",
+          "attribute": "inputs:maxAngularAcceleration",
+          "resolved_value": 0.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "corner_mu_dynamic",
+      "yaml_path": "wheel_friction.corner_wheel.dynamicFriction",
+      "schema_default": 1.0,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/Physics_Materials/corner_wheel",
+          "attribute": "physics:dynamicFriction",
+          "resolved_value": 1.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "corner_mu_static",
+      "yaml_path": "wheel_friction.corner_wheel.staticFriction",
+      "schema_default": 1.2,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/Physics_Materials/corner_wheel",
+          "attribute": "physics:staticFriction",
+          "resolved_value": 1.2000000476837158,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "middle_mu_dynamic",
+      "yaml_path": "wheel_friction.middle_wheel.dynamicFriction",
+      "schema_default": 1.0,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/Physics_Materials/middle_wheel",
+          "attribute": "physics:dynamicFriction",
+          "resolved_value": 1.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "middle_mu_static",
+      "yaml_path": "wheel_friction.middle_wheel.staticFriction",
+      "schema_default": 1.2,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/Physics_Materials/middle_wheel",
+          "attribute": "physics:staticFriction",
+          "resolved_value": 1.2000000476837158,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "floor_mu_dynamic",
+      "yaml_path": "floor_friction.dynamicFriction",
+      "schema_default": 0.675,
+      "bounds": [
+        0.5,
+        1.0
+      ],
+      "stage": 4,
+      "usd": [
+        {
+          "prim": "/World/Physics_Materials/floor",
+          "attribute": "physics:dynamicFriction",
+          "resolved_value": null,
+          "authored": false
+        }
+      ]
+    },
+    {
+      "key": "floor_mu_static",
+      "yaml_path": "floor_friction.staticFriction",
+      "schema_default": 0.8,
+      "bounds": [
+        0.6,
+        1.2
+      ],
+      "stage": 4,
+      "usd": [
+        {
+          "prim": "/World/Physics_Materials/floor",
+          "attribute": "physics:staticFriction",
+          "resolved_value": null,
+          "authored": false
+        }
+      ]
+    },
+    {
+      "key": "drive_damping",
+      "yaml_path": "wheel_drive.damping",
+      "schema_default": 10000.0,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/joints/left_up_wheel_link_joint",
+          "attribute": "drive:angular:physics:damping",
+          "resolved_value": 10000.0,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/joints/left_down_wheel_link_joint",
+          "attribute": "drive:angular:physics:damping",
+          "resolved_value": 10000.0,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/joints/right_up_wheel_link_joint",
+          "attribute": "drive:angular:physics:damping",
+          "resolved_value": 10000.0,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/joints/right_down_wheel_link_joint",
+          "attribute": "drive:angular:physics:damping",
+          "resolved_value": 10000.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "drive_max_force",
+      "yaml_path": "wheel_drive.maxForce",
+      "schema_default": 3.4028235e+38,
+      "bounds": [
+        0.05,
+        50.0
+      ],
+      "stage": 4,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/joints/left_up_wheel_link_joint",
+          "attribute": "drive:angular:physics:maxForce",
+          "resolved_value": 3.4028234663852886e+38,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/joints/left_down_wheel_link_joint",
+          "attribute": "drive:angular:physics:maxForce",
+          "resolved_value": 3.4028234663852886e+38,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/joints/right_up_wheel_link_joint",
+          "attribute": "drive:angular:physics:maxForce",
+          "resolved_value": 3.4028234663852886e+38,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/joints/right_down_wheel_link_joint",
+          "attribute": "drive:angular:physics:maxForce",
+          "resolved_value": 3.4028234663852886e+38,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "base_linear_damping",
+      "yaml_path": "drag.base_linear_damping",
+      "schema_default": 0.0,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/base_link",
+          "attribute": "physxRigidBody:linearDamping",
+          "resolved_value": 0.0,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "base_angular_damping",
+      "yaml_path": "drag.base_angular_damping",
+      "schema_default": 0.05,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/base_link",
+          "attribute": "physxRigidBody:angularDamping",
+          "resolved_value": 0.05000000074505806,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "base_mass",
+      "yaml_path": "mass.base_link",
+      "schema_default": 1.40495,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/base_link",
+          "attribute": "physics:mass",
+          "resolved_value": 1.4049500226974487,
+          "authored": true
+        }
+      ]
+    },
+    {
+      "key": "wheel_mass",
+      "yaml_path": "mass.wheel",
+      "schema_default": 0.08,
+      "bounds": [
+        null,
+        null
+      ],
+      "stage": null,
+      "usd": [
+        {
+          "prim": "/World/ugv_rover/left_up_wheel_link",
+          "attribute": "physics:mass",
+          "resolved_value": 0.07999999821186066,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/left_down_wheel_link",
+          "attribute": "physics:mass",
+          "resolved_value": 0.07999999821186066,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/left_middle_wheel_link",
+          "attribute": "physics:mass",
+          "resolved_value": 0.07999999821186066,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/right_up_wheel_link",
+          "attribute": "physics:mass",
+          "resolved_value": 0.07999999821186066,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/right_down_wheel_link",
+          "attribute": "physics:mass",
+          "resolved_value": 0.07999999821186066,
+          "authored": true
+        },
+        {
+          "prim": "/World/ugv_rover/right_middle_wheel_link",
+          "attribute": "physics:mass",
+          "resolved_value": 0.07999999821186066,
+          "authored": true
+        }
+      ]
+    }
+  ],
+  "wheel_material_bindings": [
+    {
+      "collider": "/World/ugv_rover/left_down_wheel_link/collisions/left_down_wheel_link/node_STL_BINARY_",
+      "physics_material": "/World/Physics_Materials/corner_wheel",
+      "binding_relationship": "/World/ugv_rover/left_down_wheel_link/collisions/left_down_wheel_link/node_STL_BINARY_.material:binding:physics"
+    },
+    {
+      "collider": "/World/ugv_rover/left_middle_wheel_link/collisions/left_up_wheel_link/node_STL_BINARY_",
+      "physics_material": "/World/Physics_Materials/middle_wheel",
+      "binding_relationship": "/World/ugv_rover/left_middle_wheel_link/collisions/left_up_wheel_link/node_STL_BINARY_.material:binding:physics"
+    },
+    {
+      "collider": "/World/ugv_rover/left_up_wheel_link/collisions/left_up_wheel_link/node_STL_BINARY_",
+      "physics_material": "/World/Physics_Materials/corner_wheel",
+      "binding_relationship": "/World/ugv_rover/left_up_wheel_link/collisions/left_up_wheel_link/node_STL_BINARY_.material:binding:physics"
+    },
+    {
+      "collider": "/World/ugv_rover/right_down_wheel_link/collisions/right_down_wheel_link/node_STL_BINARY_",
+      "physics_material": "/World/Physics_Materials/corner_wheel",
+      "binding_relationship": "/World/ugv_rover/right_down_wheel_link/collisions/right_down_wheel_link/node_STL_BINARY_.material:binding:physics"
+    },
+    {
+      "collider": "/World/ugv_rover/right_middle_wheel_link/collisions/right_up_wheel_link/node_STL_BINARY_",
+      "physics_material": "/World/Physics_Materials/middle_wheel",
+      "binding_relationship": "/World/ugv_rover/right_middle_wheel_link/collisions/right_up_wheel_link/node_STL_BINARY_.material:binding:physics"
+    },
+    {
+      "collider": "/World/ugv_rover/right_up_wheel_link/collisions/right_up_wheel_link/node_STL_BINARY_",
+      "physics_material": "/World/Physics_Materials/corner_wheel",
+      "binding_relationship": "/World/ugv_rover/right_up_wheel_link/collisions/right_up_wheel_link.material:binding"
+    }
+  ],
+  "explicit_rigid_body_masses": [
+    {
+      "prim": "/World/ugv_rover/base_link",
+      "mass": 1.4049500226974487
+    },
+    {
+      "prim": "/World/ugv_rover/base_lidar_link",
+      "mass": 0.041800010949373245
+    },
+    {
+      "prim": "/World/ugv_rover/front_camera_link",
+      "mass": 0.04331599920988083
+    },
+    {
+      "prim": "/World/ugv_rover/left_down_wheel_link",
+      "mass": 0.07999999821186066
+    },
+    {
+      "prim": "/World/ugv_rover/left_middle_wheel_link",
+      "mass": 0.07999999821186066
+    },
+    {
+      "prim": "/World/ugv_rover/left_up_wheel_link",
+      "mass": 0.07999999821186066
+    },
+    {
+      "prim": "/World/ugv_rover/pt_base_link",
+      "mass": 0.10951818525791168
+    },
+    {
+      "prim": "/World/ugv_rover/pt_link1",
+      "mass": 0.0071091740392148495
+    },
+    {
+      "prim": "/World/ugv_rover/pt_link2",
+      "mass": 0.09704960882663727
+    },
+    {
+      "prim": "/World/ugv_rover/pt_camera_link",
+      "mass": 0.006236518267542124
+    },
+    {
+      "prim": "/World/ugv_rover/right_down_wheel_link",
+      "mass": 0.07999999821186066
+    },
+    {
+      "prim": "/World/ugv_rover/right_middle_wheel_link",
+      "mass": 0.07999999821186066
+    },
+    {
+      "prim": "/World/ugv_rover/right_up_wheel_link",
+      "mass": 0.07999999821186066
+    }
+  ],
+  "explicit_rigid_body_mass_sum": 2.1899795085191727,
+  "scope": "Static locally resolved USD composition; remote sensor assets may require Kit resolution."
+}

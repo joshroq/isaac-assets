@@ -131,7 +131,10 @@ Visualization Manager:
           Selectable: true
           Size (Pixels): 2
           Size (m): 0.01
-          Style: Flat Squares
+          # "Points" not "Flat Squares": this box's ros-humble-rviz-rendering 11.2.27 is
+          # missing the GLSL150 box/flat_square materials, so Flat Squares renders black /
+          # can abort RViz. Points uses the material that is present. See nav_rgb for detail.
+          Style: Points
           Topic:
             Depth: 5
             Durability Policy: Volatile

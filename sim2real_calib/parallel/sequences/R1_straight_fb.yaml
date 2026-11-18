@@ -1,0 +1,17 @@
+name: R1_straight_fb
+# Straight forward + backward at the Nav2/teleop speeds (out-and-back keeps it on the grid).
+# Response-map battery (Nav2 TEB/rotation-shim + keyboard teleop envelope: |v| <= 0.26 m/s, |w| <= 1.0 rad/s). 13 steps, 17.8 s.
+steps:
+  - {linear: +0.00, angular: +0.00, duration: 1.0}
+  - {linear: +0.10, angular: +0.00, duration: 2.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.10, angular: -0.00, duration: 2.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.20, angular: +0.00, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.20, angular: -0.00, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.26, angular: +0.00, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.26, angular: -0.00, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
