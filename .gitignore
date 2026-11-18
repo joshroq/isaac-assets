@@ -29,3 +29,27 @@ __pycache__/
 # Keep source assets and USD files tracked; ignore only backup churn.
 *.bak
 *.bak-*
+
+# Thesis experiment trial outputs (CSVs/plots) — keep specific results with git add -f
+experiments/data/
+
+# sim2real_calib generated results - local catalog: sim2real_calib/RESULTS.md
+sim2real_calib/loop/runs/
+sim2real_calib/demo/runs/
+sim2real_calib/navcmp/runs/
+sim2real_calib/optimize/runs/
+
+# Generated navigation recordings and large RTAB-Map databases
+experiments/runs/
+experiments/replay_video/*.mp4
+experiments/maps/**/*.db
+
+# LaTeX build intermediates (keep source and final PDFs)
+*.aux
+*.fdb_latexmk
+*.fls
+*.toc
+*.synctex.gz
+
+# Local camera bootstrap credentials
+ts-authkey

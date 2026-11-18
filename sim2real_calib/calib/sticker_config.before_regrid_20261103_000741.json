@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "image_size": [
+    1280,
+    720
+  ],
+  "sticker_diameter_m": 0.01905,
+  "geometry_measured": true,
+  "projection_verified": true,
+  "reference_point": "chassis_center",
+  "sticker_height_m": 0.15875,
+  "camera_position_m": [
+    0.49367465098060637,
+    0.1274583151213668,
+    1.58666887237535
+  ],
+  "plane_H_img2m": null,
+  "min_area_px": 8,
+  "max_area_px": 2500,
+  "min_circularity": 0.45,
+  "max_candidates_per_color": 8,
+  "max_edge_error_m": 0.015,
+  "max_fit_error_m": 0.006,
+  "stickers": [
+    {
+      "name": "green",
+      "body_xy_m": [
+        0.0650875,
+        0.0508
+      ],
+      "hsv_ranges": [
+        {
+          "lower": [
+            75,
+            106,
+            108
+          ],
+          "upper": [
+            91,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orange_red",
+      "body_xy_m": [
+        0.0650875,
+        -0.0508
+      ],
+      "hsv_ranges": [
+        {
+          "lower": [
+            169,
+            99,
+            120
+          ],
+          "upper": [
+            179,
+            255,
+            255
+          ]
+        },
+        {
+          "lower": [
+            0,
+            99,
+            120
+          ],
+          "upper": [
+            5,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "yellow",
+      "body_xy_m": [
+        -0.0650875,
+        0.0
+      ],
+      "hsv_ranges": [
+        {
+          "lower": [
+            28,
+            41,
+            109
+          ],
+          "upper": [
+            44,
+            255,
+            255
+          ]
+        }
+      ]
+    }
+  ],
+  "setup_points_px": [
+    [
+      549.0,
+      225.0
+    ],
+    [
+      612.0,
+      228.0
+    ],
+    [
+      579.0,
+      304.0
+    ]
+  ],
+  "note": "Measured body coordinates: +x forward, +y left, origin midway between middle-wheel hubs.",
+  "camera_position_source": "grid_homography_estimate"
+}

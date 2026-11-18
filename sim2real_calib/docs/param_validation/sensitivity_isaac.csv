@@ -1,0 +1,14 @@
+parameter,stage,assigned_test,assigned_features,T1_straight:v_ss,T1_straight:dist,T1_straight:tau_v,T1_straight:coast_dist,T1_straight:coast_time,T2_spin:omega_ss,T2_spin:dyaw,T2_spin:tau_omega,T2_spin:turn_walk,T4_arc:arc_radius
+wheel_distance,6,T2_spin,dyaw omega_ss,-0.08,1.82,-2.05,0.06,0.00,13.82,34.79,0.00,-0.75,-88.42
+max_linear_speed,3,T3_sweep,v_ss omega_ss,-0.02,0.75,-0.82,-1.76,-1.55,1.80,0.25,-1.93,-1.59,1.17
+max_angular_speed,3,T3_sweep,v_ss omega_ss,0.07,-1.46,1.64,1.40,1.55,0.96,1.86,0.48,-0.59,0.89
+corner_mu_dynamic,4,T3_sweep,dist v_ss tau_v coast_dist,0.03,0.06,0.41,-0.01,0.00,0.66,0.63,0.00,-2.12,1.15
+corner_mu_static,4,T3_sweep,dist v_ss tau_v coast_dist,-0.01,-1.17,1.23,-0.07,-0.26,-0.21,0.51,-0.48,-2.56,-2.50
+middle_mu_dynamic,7,T2_spin,turn_walk,-0.05,0.04,0.00,0.01,0.00,1.60,1.73,-0.97,-1.52,3.68
+middle_mu_static,7,T2_spin,turn_walk,0.03,0.09,0.00,-0.12,-0.26,1.05,0.77,-1.45,3.44,-0.93
+floor_mu_dynamic,4,T3_sweep,dist v_ss tau_v coast_dist,0.16,1.12,-0.82,-0.09,-0.26,-1.23,-2.58,-6.28,-0.02,4.47
+floor_mu_static,4,T3_sweep,dist v_ss tau_v coast_dist,0.02,-1.18,1.23,0.14,0.26,-2.29,-0.26,0.00,-2.05,-6.75
+drive_damping,2,T1_straight,tau_v coast_dist coast_time,-0.03,-0.40,0.41,0.02,-0.00,1.08,1.12,0.97,-3.02,1.54
+drive_max_force,2,T1_straight,tau_v coast_dist coast_time,0.03,-0.36,0.41,0.28,0.26,4.98,8.38,-0.97,-1.93,-28.43
+base_linear_damping,5,T1_straight,v_ss coast_dist coast_time,-0.05,-0.48,0.41,-0.10,0.00,0.00,0.00,0.00,0.00,1.17
+base_angular_damping,5,T1_straight,v_ss coast_dist coast_time,0.00,0.00,0.00,0.00,0.00,0.40,0.85,0.48,2.68,1.17

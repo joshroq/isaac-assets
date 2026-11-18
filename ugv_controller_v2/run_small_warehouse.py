@@ -19,7 +19,21 @@ COMMON_DIR = Path(__file__).resolve().parent / "common"
 if str(COMMON_DIR) not in sys.path:
     sys.path.insert(0, str(COMMON_DIR))
 
-from run_baked_rover import run, asset_path
+from run_baked_rover import run, asset_path, DEFAULT_CAMERA_RESOLUTION
+
+
+def _parse_camera_res(value: str) -> tuple[int, int] | None:
+    """Parse a --camera-res value: 'WxH' (e.g. 640x480) or 'native' (leave the
+    baked render products unauthored → Isaac's 1280x720 default)."""
+    if value.strip().lower() in ("native", "default", "full"):
+        return None
+    try:
+        w, h = value.lower().split("x")
+        return (int(w), int(h))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--camera-res must be 'WxH' (e.g. 640x480) or 'native', got '{value}'"
+        )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -29,6 +43,20 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--headless", action="store_true",
         help="Run without the Isaac viewport (topics still publish).",
+    )
+    _default_res = (
+        "native" if DEFAULT_CAMERA_RESOLUTION is None
+        else "x".join(map(str, DEFAULT_CAMERA_RESOLUTION))
+    )
+    parser.add_argument(
+        "--camera-res", "--camera_res", dest="camera_resolution",
+        type=_parse_camera_res,
+        default=_default_res,
+        help=(
+            f"Camera render-product resolution as WxH (default '{_default_res}'; "
+            "'native' = Isaac's 1280x720, correct square-pixel intrinsics). Pass a "
+            "smaller WxH (e.g. 512x384) only to cut VRAM on a small GPU."
+        ),
     )
     parser.add_argument(
         "--no-camera-topics",
@@ -51,5 +79,6 @@ if __name__ == "__main__":
             environment_usd=asset_path("small_warehouse.usd"),
             headless=args.headless,
             camera_topics=args.camera_topics,
+            camera_resolution=args.camera_resolution,
         )
     )

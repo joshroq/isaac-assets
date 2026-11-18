@@ -1,0 +1,12 @@
+[Unit]
+Description=Roam the rover's Wi-Fi to a clearly stronger AP of the same network (sticky-client fix)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/usr/local/sbin/rover-wifi-roam
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

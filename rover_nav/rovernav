@@ -1,0 +1,95 @@
+#!/bin/bash
+# rovernav — ONE command to bring a nav stack up on the rover and broadcast it to the
+# desktop RViz viewer. The rover-side analog of the sim's `navlaunch`.
+#
+#   ~/rover_nav/rovernav lidar      # LiDAR SLAM + Nav2                    (2D geometry)
+#   ~/rover_nav/rovernav depth      # LiDAR SLAM + Nav2 + OAK depth cloud
+#   ~/rover_nav/rovernav rgb        # RTAB-Map RGB-D + LiDAR SLAM + Nav2   (== rtab)
+#   ~/rover_nav/rovernav orbslam3   # ORB-SLAM3 RGB-D visual SLAM + LiDAR  (localizer)
+#   ~/rover_nav/rovernav cuvslam    # Isaac cuVSLAM stereo visual odometry + LiDAR
+#   ~/rover_nav/rovernav --local lidar   # run WITHOUT broadcasting to the desktop
+#
+# Then, on the DESKTOP, one command to see it (same per-stack RViz as the sim):
+#   rover_comms/desktop/view_rover.sh <stack>
+#
+# It sets comms mode (native multicast so the desktop sees it), caches sudo for the
+# camera stacks, starts each piece in the right order (waiting for readiness), and runs
+# the final piece in the foreground. Ctrl-C stops the whole stack. Only ONE stack at a
+# time — the built-in guards refuse a second base bringup / OAK. Set ROVER_SUDO_PW to
+# avoid the sudo prompt on camera stacks.
+set -o pipefail
+HERE="$HOME/rover_nav"
+LOGS="$HERE/logs"; mkdir -p "$LOGS"
+
+usage() { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+comms=1
+case "${1:-}" in
+  --local|-l) comms=0; shift ;;
+  -h|--help|"") usage 0 ;;
+esac
+
+raw="${1:-}"; raw="${raw#-}"
+case "$raw" in
+  lidar|slam)        stack=lidar ;;
+  depth|icp)         stack=depth ;;
+  rgb|rtab|rtabmap)  stack=rgb ;;
+  orbslam3|orbslam)  stack=orbslam3 ;;
+  cuvslam|nvblox)    stack=cuvslam ;;
+  *) echo "unknown stack '${1:-}' (want: lidar|depth|rgb|orbslam3|cuvslam)"; echo; usage 1 ;;
+esac
+
+export ROVER_NAV_COMMS="$comms"     # 1 = broadcast to desktop (multicast); 0 = local only
+
+# --- pipeline per stack: BG steps ("script.sh|readiness-grep|timeout") then FG script ---
+# camera stacks start the OAK themselves (inside their launch), except `depth` which uses
+# start_oak.sh explicitly.
+case "$stack" in
+  lidar)    BG=();                                              FG="start_lidar_nav.sh" ;;
+  depth)    BG=("start_oak.sh|Camera ready|45");               FG="start_depth_nav.sh" ;;
+  rgb)      BG=("start_rtab.sh|Camera ready|60");              FG="start_rtab_navigation.sh" ;;
+  orbslam3) BG=("start_bringup.sh|communication is normal|30"); FG="start_orbslam.sh" ;;
+  cuvslam)  BG=("start_bringup.sh|communication is normal|30"); FG="start_cuvslam.sh" ;;
+esac
+
+# Camera stacks need root to chmod the OAK USB node (their _oak_watcher/_sudo helpers use
+# ROVER_SUDO_PW if set, else cached sudo). Cache creds up front so nothing prompts from bg.
+case "$stack" in
+  depth|rgb|orbslam3|cuvslam)
+    if [ -z "${ROVER_SUDO_PW:-}" ]; then
+      echo "=== rovernav: caching sudo (OAK USB permissions) ==="
+      sudo -v || { echo "sudo needed for the camera (or set ROVER_SUDO_PW=...)"; exit 1; }
+      ( while true; do sudo -n true 2>/dev/null; sleep 50; done ) & SUDO_KEEP=$!
+    fi ;;
+esac
+
+BG_PIDS=()
+cleanup() {
+  [ -n "${SUDO_KEEP:-}" ] && kill "$SUDO_KEEP" 2>/dev/null
+  for p in "${BG_PIDS[@]}"; do kill "$p" 2>/dev/null; done
+}
+trap cleanup EXIT INT TERM
+
+run_bg() {   # $1=script  $2=readiness-grep  $3=timeout-sec
+  local script="$1" ready="$2" tmo="${3:-30}" log="$LOGS/${1%.sh}.log"
+  echo "=== rovernav: starting ${script} ==="
+  ( "$HERE/$script" > "$log" 2>&1 ) & BG_PIDS+=($!)
+  local pid=${BG_PIDS[-1]} i=0
+  while [ "$i" -lt "$tmo" ]; do
+    if [ -n "$ready" ] && grep -qiE "$ready" "$log" 2>/dev/null; then echo "    ${script} ready."; return 0; fi
+    grep -qiE "ABORT|already running" "$log" 2>/dev/null && { echo "    ($script: reusing / guard); continuing"; return 0; }
+    kill -0 "$pid" 2>/dev/null || { echo "    ERROR: $script exited early — see $log"; tail -3 "$log"; exit 1; }
+    sleep 1; i=$((i+1))
+  done
+  echo "    WARN: ${script} readiness ('${ready}') not seen in ${tmo}s; continuing (check $log)"
+}
+
+for step in "${BG[@]}"; do
+  IFS='|' read -r s r t <<< "$step"
+  run_bg "$s" "$r" "$t"
+done
+
+echo
+echo "=== rovernav: $stack up — running $FG (Ctrl-C stops the whole stack) ==="
+echo "    view on the desktop:  rover_comms/desktop/view_rover.sh $stack"
+"$HERE/$FG"    # foreground (NOT exec, so the trap cleans up the bg pieces on exit)

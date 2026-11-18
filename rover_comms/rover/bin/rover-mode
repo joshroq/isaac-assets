@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# rover-mode — show or persist the comms mode (near|far).
+# Persisted mode is read by rover_env.sh for all future shells and services.
+#
+#   rover-mode            # show current mode
+#   rover-mode near       # switch to near (ugv AP LAN)
+#   rover-mode far        # switch to far  (Tailscale)
+set -eo pipefail
+
+CFG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rover_comms"
+MODE_FILE="${CFG_DIR}/mode"
+
+case "${1:-}" in
+  "")
+    if [ -f "$MODE_FILE" ]; then
+      echo "current mode: $(cat "$MODE_FILE")"
+    else
+      echo "current mode: far (default; no ${MODE_FILE})"
+    fi
+    ;;
+  near|far)
+    mkdir -p "$CFG_DIR"
+    printf '%s\n' "$1" > "$MODE_FILE"
+    echo "mode set to '$1' (${MODE_FILE})"
+    echo "Restart the rover driver so it re-reads the env:"
+    echo "  sudo systemctl restart rover-comms-bringup.service   # if installed"
+    ;;
+  *)
+    echo "usage: rover-mode [near|far]" >&2; exit 1 ;;
+esac

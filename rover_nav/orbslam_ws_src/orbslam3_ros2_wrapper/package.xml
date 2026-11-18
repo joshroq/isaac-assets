@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>orbslam3_ros2_wrapper</name>
+  <version>0.2.0</version>
+  <description>
+    ROS 2 RGB-D bridge that runs ORB-SLAM3 (from projects/slam_source/ORB_SLAM3) as
+    the map->odom localizer for the nav_orbslam3 Isaac-Sim navigation system
+    (ugv_controller_v2 baked-graph rover).
+  </description>
+  <maintainer email="joshusroquemore@gmail.com">joshroq</maintainer>
+  <license>GPL-3.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>cv_bridge</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>message_filters</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_eigen</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,29 @@
+name: R4_arcs_fast
+# Arcs at the Nav2 cruise speeds (0.2 / 0.26 m/s): radius 2.6, 1.0, 0.4-0.5 m, left and right, out and back.
+# Response-map battery (Nav2 TEB/rotation-shim + keyboard teleop envelope: |v| <= 0.26 m/s, |w| <= 1.0 rad/s). 25 steps, 32.6 s.
+steps:
+  - {linear: +0.00, angular: +0.00, duration: 1.0}
+  - {linear: +0.26, angular: +0.10, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.26, angular: -0.10, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.20, angular: +0.20, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.20, angular: -0.20, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.20, angular: +0.50, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.20, angular: -0.50, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.26, angular: -0.10, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.26, angular: +0.10, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.20, angular: -0.20, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.20, angular: +0.20, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.20, angular: -0.50, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: -0.20, angular: +0.50, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}

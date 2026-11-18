@@ -1,0 +1,7 @@
+name: T2_spin
+# In-place rotation. Isolates effective track (wheel_distance D), spin friction chi(mu),
+# angular damping. Place the rover near the grid centre.
+steps:
+  - {linear: 0.0, angular: 0.0, duration: 1.0}    # settle
+  - {linear: 0.0, angular: 0.6, duration: 8.0}    # spin in place (~1 turn)
+  - {linear: 0.0, angular: 0.0, duration: 2.0}    # stop + spin coast

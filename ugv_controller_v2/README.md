@@ -19,6 +19,44 @@ The rover is now driven **exclusively by `geometry_msgs/Twist` on `/cmd_vel`**,
 whether that comes from the keyboard teleop or from Nav2. No Python driver, no
 write-arbitration.
 
+The chassis uses `base_link_fixed2.stl` through the shared imported USD and fixed
+URDF. All Isaac runners inherit it on their next launch. See
+[the mesh update audit](BASE_MESH_UPDATE.md) for geometry, graph dependencies,
+installed-package synchronization and the read-only verification command.
+
+## Part 1 — SLAM/Nav2 fidelity baseline (current thesis focus)
+
+> **Current thesis Part 1 is not randomized-object navigation.** Part 1 uses a
+> carefully matched real/sim room to evaluate SLAM/Nav2 transfer, with controlled,
+> repeatable geometry, object placement, route, start pose and goal pose.
+> **Randomized-object environment experiments are paused. They belong to the later
+> policy-training/generalization phase, not the current SLAM/Nav2 fidelity baseline
+> phase** — their code is preserved (not deleted) under `nav_experiment/`. Do not
+> create new randomized-object trials unless explicitly asked.
+
+The Part 1 navigation stacks (each differs only in what supplies `map->odom` and
+what fills the Nav2 costmap; the planner/controller/`/cmd_vel` output are the shared
+upstream `ugv_nav` stack):
+
+| # | stack | dir | localization | obstacle/costmap | RGB | depth | LiDAR | IMU | role |
+|---|---|---|---|---|:--:|:--:|:--:|:--:|---|
+| 1 | **LiDAR-only Nav2** | `nav_lidar` | LiDAR SLAM (slam_toolbox) | LiDAR `/scan` | – | – | ✅ | – | geometry-only baseline |
+| 2 | **LiDAR + raw depth Nav2** | `nav_depth` | LiDAR SLAM (slam_toolbox) | LiDAR + raw depth PointCloud2 | – | ✅ | ✅ | – | geometry/depth baseline |
+| 3 | **RTAB-Map RGB-D + LiDAR + Nav2** | `nav_rgb` | RTAB-Map RGB-D + LiDAR `/scan` | LiDAR `/scan` + RGB-D cloud | ✅ | ✅ | ✅ | – | open-source RGB-D/LiDAR SLAM navigation stack |
+| 4 | **Isaac ROS Visual SLAM + nvblox + Nav2** | `nav_cuvslam_nvblox` | cuVSLAM (RGB-D, IMU optional) | nvblox depth reconstruction/costmap | ✅ | ✅ | – | ◐ | NVIDIA visual-depth navigation stack |
+| 5 | **ORB-SLAM3 + LiDAR + Nav2** *(optional/stretch)* | `nav_orbslam3` | ORB-SLAM3 RGB-D | LiDAR | ✅ | ✅ | ✅ | – | optional classical visual SLAM comparison |
+
+(◐ = optional: cuVSLAM uses the IMU only when `enable_imu_fusion:=true`.)
+
+**RTAB-Map uses RGB-D plus LiDAR in `nav_rgb`.** The restored Part 1 RTAB stack fuses
+the LiDAR `/scan` with RGB-D: `subscribe_scan` is `True`, `/scan` is remapped to
+`/ugv_sim/scan`, and Nav2 keeps the upstream scan obstacle source while the RGB-D
+cloud remains available for visualization.
+
+`nav_dpvo` (DPVO monocular VO) is **not** a Part 1 stack and has been **archived**,
+inactive, at `nav_systems/nav_dpvo_archived/`. It is preserved (not deleted) for the
+later visual-odometry comparison work.
+
 ## Layout
 
 ```
@@ -39,31 +77,52 @@ ugv_controller_v2/
 │   ├── random_small_warehouse_obstacles.py NVIDIA Replicator static-obstacle generator
 │   └── publish_nav_goal.py                 shell helper for /goal_pose
 └── nav_systems/
-    ├── nav_lidar/
+    ├── nav_lidar/                      [Part 1 #1] LiDAR-only Nav2
     │   └── isaac_nav_lidar.launch.py   ROS 2: upstream ugv_nav use_slam (slam_toolbox)
-    ├── nav_rgb/
-    │   └── isaac_nav_rgb.launch.py     ROS 2: ugv_slam rtabmap_rgbd + ugv_nav navigation (3D RViz)
-    ├── nav_depth/
+    ├── nav_depth/                      [Part 1 #2] LiDAR + raw depth Nav2
     │   ├── isaac_nav_depth.launch.py   ROS 2: lidar slam_toolbox map + depth XYZ cloud
     │   │                               (depth_image_proc, NO RGB) fed to costmaps (3D RViz)
     │   └── isaac_depth_nav.rviz
-    └── nav_orbslam3/
-        ├── isaac_nav_orbslam3.launch.py  ROS 2: ORB-SLAM3 RGB-D visual SLAM -> map->odom
-        │                                 + ugv_nav navigation (3D RViz)
-        ├── isaac_orbslam3_nav.rviz
-        ├── build.sh                      ONE-TIME: libORB_SLAM3.so + the wrapper overlay
-        ├── visual_map_builder.py         sparse ORB map points -> /map (Nav2 static layer)
-        ├── config/isaac_rgbd.yaml        ORB-SLAM3 settings OVERRIDE (default: auto from
-        │                                 camera_info)
-        └── orbslam3_ros2_wrapper/        C++ ROS 2 node linking projects/slam_source/ORB_SLAM3
+    ├── nav_rgb/                        [Part 1 #3] RTAB-Map RGB-D + LiDAR + Nav2
+    │   ├── isaac_nav_rgb.launch.py     ROS 2: RTAB-Map RGB-D (subscribe_scan True) + ugv_nav
+    │   │                               navigation; /scan remapped to /ugv_sim/scan (3D RViz)
+    │   └── isaac_rgb_nav.rviz
+    ├── nav_cuvslam_nvblox/             [Part 1 #4] Isaac ROS Visual SLAM + nvblox + Nav2
+    │   ├── isaac_nav_cuvslam_nvblox.launch.py  ROS 2: cuVSLAM (RGB-D, IMU opt) map->odom +
+    │   │                               nvblox ESDF slice → Nav2 nvblox_layer costmap (no LiDAR)
+    │   ├── isaac_cuvslam_nvblox_nav.rviz
+    │   └── README.md                   build (source: ~/projects/slam_source) + run notes
+    ├── nav_orbslam3/                   [Part 1 #5, optional/stretch] ORB-SLAM3 + LiDAR + Nav2
+    │   ├── isaac_nav_orbslam3.launch.py  ROS 2: ORB-SLAM3 RGB-D visual SLAM -> map->odom
+    │   │                                 + ugv_nav navigation (3D RViz + Pangolin)
+    │   ├── isaac_orbslam3_nav.rviz
+    │   ├── build.sh                      ONE-TIME: libORB_SLAM3.so + the wrapper overlay
+    │   ├── config/isaac_rgbd.yaml        ORB-SLAM3 settings OVERRIDE (default: auto from
+    │   │                                 camera_info)
+    │   └── orbslam3_ros2_wrapper/        C++ ROS 2 node linking projects/slam_source/ORB_SLAM3
+    └── nav_dpvo_archived/              ARCHIVED/INACTIVE: DPVO monocular VO (not Part 1)
+        ├── isaac_nav_dpvo.launch.py      ROS 2: DPVO monocular VO -> map->odom
+        │                                 + ugv_nav navigation (COLCON_IGNORE)
+        ├── isaac_dpvo_nav.rviz
+        ├── dpvo_bridge_node.py           DPVO -> map->odom + /dpvo/map_points (runs in the
+        │                                 `dpvo` conda env: torch/CUDA + system rclpy)
+        ├── setup.sh                      environment CHECK (does not build)
+        └── README.md
 ```
+
+`common/visual_map_builder.py` is shared by the two VISUAL systems (`nav_orbslam3`
+and the archived `nav_dpvo_archived`): both emit a sparse point cloud rather than an
+occupancy grid, so it projects their map points into the `/map` Nav2's global static
+layer needs.
 
 There are **no per-system Isaac run scripts** anymore: the Isaac side is
 nav-agnostic (it just plays the baked USD), so `run_small_warehouse.py` serves
 every nav system. A nav system is otherwise purely a ROS 2 launch file under
-`nav_systems/` — `nav_orbslam3` is the one exception, because ORB-SLAM3 is C++ and
-has to be compiled (slam_toolbox and RTAB-Map come from apt), so it also ships the
-wrapper node it builds into a local colcon overlay.
+`nav_systems/`. The two VISUAL systems are the exceptions, and only because their
+localizers are not apt packages like slam_toolbox/RTAB-Map: `nav_orbslam3` is C++ and
+compiles a wrapper node into a local colcon overlay, and `nav_dpvo_archived` is
+torch+CUDA and runs its bridge in the `dpvo` conda env. The launch files still carry
+all the wiring.
 
 ## Prerequisites
 
@@ -110,17 +169,17 @@ ros2 launch ugv_controller_v2/nav_systems/nav_lidar/isaac_nav_lidar.launch.py
 Then in RViz: drive `/cmd_vel` manually first (keyboard) to build the slam_toolbox
 map, then send a **2D Nav Goal** → Nav2 plans → `/cmd_vel` → Isaac drives.
 
-## Run — RGB-D navigation (RTAB-Map)
+## Run — RTAB-Map RGB-D + LiDAR + Nav2 — Part 1 #3
 
-Same Isaac launcher; the ROS 2 side runs the real rover's RTAB-Map RGB-D SLAM
-(`ugv_slam/rtabmap_rgbd.launch.py` replicated) + `ugv_nav` navigation, with the
-**3D RViz** view.
+Same Isaac launcher; the ROS 2 side runs RTAB-Map with **RGB-D + LiDAR**
+(`subscribe_scan` True, `/scan` remapped to `/ugv_sim/scan`) + `ugv_nav`
+navigation, with the **3D RViz** view. Nav2 keeps the upstream scan obstacle source.
 
 ```bash
 # Terminal 1 — Isaac
 isaacpy ugv_controller_v2/run_small_warehouse.py
 
-# Terminal 2 — RTAB-Map RGB-D + Nav2 (3D RViz)
+# Terminal 2 — RTAB-Map RGB-D + LiDAR + Nav2 (3D RViz)
 source /opt/ros/humble/setup.bash
 source /home/joshroq/projects/isaac-assets/ugv_ws/install/setup.bash
 source ~/.local/bin/ros2ddsenv
@@ -129,8 +188,34 @@ ros2 launch ugv_controller_v2/nav_systems/nav_rgb/isaac_nav_rgb.launch.py
 #   ... use_localplan:=teb        # planner: teb|dwa|rpp|mppi
 ```
 
-Uses the `/oak/*` camera topics, which Isaac now publishes by default alongside
-lidar/odom/TF. Drive manually to build the map, then send a **2D Nav Goal**.
+Uses the `/oak/*` camera topics and `/scan`, which Isaac publishes by default. Drive
+manually to build the map, then send a **2D Nav Goal**.
+
+## Run — Isaac ROS Visual SLAM (cuVSLAM) + nvblox + Nav2 — Part 1 #4
+
+The main NVIDIA visual-depth stack. cuVSLAM localizes from the RGB-D camera (IMU
+optional) and broadcasts `map->odom`; nvblox reconstructs depth into an ESDF slice
+that feeds the Nav2 `nvblox_layer` costmap. **No LiDAR.** The cuVSLAM/nvblox nodes and
+the nvblox costmap plugin must be installed once from NVIDIA Debian packages or built
+once from `~/projects/slam_source` — see `nav_systems/nav_cuvslam_nvblox/README.md`.
+
+```bash
+# One-time setup, if needed:
+ugv_controller_v2/nav_systems/nav_cuvslam_nvblox/build.sh --debs
+# or:
+ugv_controller_v2/nav_systems/nav_cuvslam_nvblox/build.sh --source
+
+# Terminal 1 — Isaac
+isaacpy ugv_controller_v2/run_small_warehouse.py
+
+# Terminal 2 — cuVSLAM + nvblox + Nav2
+navlaunch -cuvslam
+#   ... enable_imu_fusion:=true     # cuVSLAM VIO (uses /ugv_sim/imu/data)
+#   ... use_localplan:=rpp          # planner: teb|dwa|rpp|mppi
+```
+
+Drive manually until cuVSLAM is tracking (it only broadcasts `map->odom` while
+tracking), then send a **2D Nav Goal**.
 
 ## Run — DEPTH + LIDAR navigation (no RGB)
 
@@ -202,6 +287,63 @@ on map->odom, which is intentional — publishing a pose it doesn't trust would 
 map. If tracking never initializes, drive slower, raise `orb_features`, and check the RGB
 image is actually lit in RViz.
 
+**Native visualization (on by default).** Alongside RViz, ORB-SLAM3 opens its OWN two
+windows from its source: the Pangolin **Map Viewer** (keyframe graph, map points, the
+usual ORB-SLAM3 menu) and the OpenCV **Current Frame** view showing the tracked ORB
+features live. They run on ORB-SLAM3's own viewer thread. `orbslam_viewer:=false` for
+headless runs.
+
+## Run — DPVO monocular visual odometry (ARCHIVED — not Part 1)
+
+> Archived, inactive, at `nav_systems/nav_dpvo_archived/`. Kept for the later
+> visual-odometry comparison; not part of the Part 1 SLAM/Nav2 baseline.
+
+The learned/monocular sibling of nav_orbslam3. `dpvo_bridge_node.py` imports the `dpvo`
+package straight from `projects/slam_source/DPVO-main`, loads the trained `dpvo.pth`
+network, and runs the same `DPVO(cfg, net, ht, wd, viz=…)` / `slam(t, image, intrinsics)`
+loop as DPVO's own `demo.py` — then publishes its camera pose as **map->odom**.
+
+Three things make it different from every other system here:
+
+* **Monocular ⇒ scale-ambiguous.** DPVO's translations are only defined up to a global
+  scale factor, which Nav2's metric costmaps cannot use. The bridge recovers the scale
+  **online** by matching DPVO's travelled distance against Isaac's `/odom`, then applies
+  it to both the pose and the patch cloud. (`scale:=<x>` pins it instead;
+  `min_scale_travel` is how far you must drive before the estimate is trusted.) This is
+  the thing RGB-D gives nav_orbslam3 for free.
+* **Odometry, not SLAM.** No loop closure by default — it drifts, and it will not
+  re-localize after being lost. Expect worse long-run maps than nav_orbslam3.
+* **RGB only.** No depth, no lidar in the localizer.
+
+It runs in the **`dpvo` conda env** (torch 2.7/cu128 + DPVO's compiled CUDA extensions +
+DPViewer). That env is python 3.10 — the same minor as ROS Humble — so `rclpy` imports
+straight into it and the bridge is one ordinary ROS node; the launch just points the
+process at that interpreter. Nothing else on the machine is touched.
+
+```bash
+# Check the environment any time (does NOT rebuild anything)
+ugv_controller_v2/nav_systems/nav_dpvo_archived/setup.sh
+
+# Terminal 1 — Isaac
+isaacpy ugv_controller_v2/run_small_warehouse.py
+
+# Terminal 2 — DPVO + Nav2 (3D RViz + DPVO's own Pangolin viewer)
+navlaunch -v2 -dpvo
+#   ... viz:=false          # drop DPVO's native window, RViz only
+#   ... stride:=2           # process every 2nd frame (demo.py's default)
+#   ... scale:=1.0          # pin the metric scale instead of estimating it
+#   ... use_localplan:=teb  # planner: teb|dwa|rpp|mppi
+```
+
+**Native visualization (on by default).** `viz:=true` makes DPVO open **DPViewer**, its
+own Pangolin window — the live image, the tracked patches, and the 3D trajectory + patch
+cloud — exactly what `demo.py --viz` shows. It is created *inside* DPVO on the live CUDA
+tensors, and runs next to RViz.
+
+Drive manually until the log prints `anchored map==odom` and then `Monocular scale
+estimated: …`, and only then send a **2D Nav Goal** — before the scale settles, the map
+is the right shape but the wrong size.
+
 ### `navlaunch` helper
 
 `~/.local/bin/navlaunch` takes a **`-v2`** modifier combinable with a system tag.
@@ -210,28 +352,68 @@ launches the selected v2 stack:
 
 ```bash
 navlaunch -v2 -lidar                    # v2 lidar (slam_toolbox)
-navlaunch -v2 -rgb                      # v2 RGB-D RTAB-Map (3D RViz)
+navlaunch -v2 -rgb                      # v2 RGB-D + LiDAR RTAB-Map (3D RViz)
 navlaunch -v2 -depth                    # v2 depth+lidar (slam_toolbox + depth cloud, no RGB)
-navlaunch -v2 -orbslam3                 # v2 ORB-SLAM3 RGB-D visual SLAM (3D RViz)
+navlaunch -v2 -orbslam3                 # v2 ORB-SLAM3 RGB-D visual SLAM (RViz + Pangolin)
+navlaunch -v2 -dpvo                     # v2 DPVO monocular VO (RViz + DPViewer)
 navlaunch -v2 -lidar use_localplan:=rpp # planner passthrough
 navlaunch -v2 -rgb localization:=true   # localize vs saved rtabmap.db
-navlaunch -v2 -orbslam3 orbslam_viewer:=true
+navlaunch -v2 -orbslam3 orbslam_viewer:=false
+navlaunch -v2 -dpvo viz:=false
 navlaunch -v2                           # -v2 alone defaults to lidar
 ```
 
-For `-orbslam3` it also sources the system's own wrapper overlay (the one `build.sh`
-produces) and pre-flights the camera topic, since a dead camera is fatal to a visual
-localizer rather than cosmetic.
+Both visual tags pre-flight the **camera** topic as well as the lidar, since a dead camera
+is fatal to a visual localizer rather than cosmetic. `-orbslam3` also sources the wrapper
+overlay `build.sh` produces; `-dpvo` checks the `dpvo` conda interpreter exists (its
+`setup.sh` verifies the rest). Both fail with a sentence telling you what to run.
 
 (Un-suffixed tags — `-lidar`, `-rgb`, `-depth`, `rpp`, … — still target the **old**
-`ugv_controller` launch files. Ported to `-v2`: `-lidar`, `-rgb`, `-depth`, `-orbslam3`.)
+`ugv_controller` launch files. Ported to `-v2`: `-lidar`, `-rgb`, `-depth`, `-orbslam3`,
+`-dpvo`.)
 
 `navlaunch -v2` is intentionally sim-scenario agnostic: it only requires a rover
 simulation publishing the v2 ROS contract and subscribing to `/cmd_vel`. It does
 not read USD geometry directly. Any new obstacle layout must still be observable
 through the rover sensors and SLAM/localization before Nav2 can plan around it.
 
+For the **randomized-warehouse** experiment — where you want Isaac, the random
+obstacles, the nav stack, and Nav2 bring-up all started together — use
+`navrandom` (below), not `navlaunch`. `navrandom -lidar|-depth|-rtab` launches the
+whole loop; `navlaunch` remains the ROS-only piece it calls internally.
+
 ## Randomized small-warehouse obstacles
+
+**One command for the whole loop.** `navrandom` is the randomized-warehouse front
+door: it scatters a warehouse of randomized props (**live, fresh layout every run**
+by default — no fixed seed), launches Isaac + the baked rover on it, launches the
+reliable nav stack, beats the Nav2 bring-up race, and **auto-drives the rover to
+goals across the map on its own** — all in one tmux window. It also tears down any
+leftover nav stack first (so a prior DPVO/ORB-SLAM/Nav2 run can't bleed `/map`, TF
+and a ghost Nav2 into this one; `--no-clean` to skip). It takes the same `-lidar` /
+`-depth` / `-rtab` tags as `navlaunch` (and even tolerates the
+`navlaunch -v2 -random -lidar` spelling):
+
+```bash
+navrandom -lidar             # auto-drive goals, lidar slam_toolbox (watch Isaac viewport)
+navrandom -depth             # lidar map + depth cloud (no RGB)
+navrandom -rtab              # RTAB-Map RGB-D + LiDAR
+navrandom -lidar --auto 5    # auto-drive 5 goals (default count is 3)
+navrandom -lidar --no-auto --rviz   # instead: Nav2 up + RViz, click 2D Goal Pose
+navrandom -depth --seed 7 --count 24
+```
+
+`navrandom` is **autonomous by default**: it defaults to `--auto` (goals are
+picked and sent by `nav_mission.py`, no RViz click needed) and to `--no-rviz`
+(RViz's GLX context is the least stable process here and is not part of the control
+loop — watch the rover in the Isaac viewport). Use `--no-auto` to just bring Nav2
+up and wait, and `--rviz` to launch RViz too.
+
+`navrandom` wraps `nav_experiment/warehouse_lab.sh`; see its `--help`, and
+`nav_experiment/README.md`, for the full option list. `navlaunch` itself stays
+sim-agnostic (ROS side only, no Isaac), so the whole-loop launcher lives with the
+experiment. The manual, per-terminal flow below still works if you want to run the
+pieces yourself.
 
 Validate the warehouse/obstacle generation without the rover:
 
@@ -312,11 +494,36 @@ The baked ROS 2 bridge dlopens Isaac's **bundled** ROS 2 libs. If a system ROS 2
 (`isaacpy_clean.sh`) scrubs system ROS from the Isaac process while keeping
 `ROS_DOMAIN_ID`/`RMW` so DDS still meets the Nav2 terminal. See `isaacpy_clean.sh`.
 
-## Status / next systems
+For a system ROS terminal, run `source ros2env.sh` to match Isaac's
+`ROS_LOCALHOST_ONLY=0` and ordinary discovery. The wrapper sets that mode even if
+`~/.bashrc` uses localhost-only elsewhere. Odometry is `/ugv_sim/odom`;
+`/cmd_vel`, `/clock`, and `/tf` are global. Check received messages, not just a
+cached `ros2 topic list`. `SIM_REALTIME=1` optionally caps stepping at real time.
 
-- ✅ Core runner, keyboard teleop, lidar nav, RGB-D nav, depth+lidar nav,
-  ORB-SLAM3 visual SLAM — implemented here.
-- ⏭️ `nav_dpvo` (monocular visual odometry) ports the same way. It will also need the
-  sparse-cloud → `/map` projector, so lift `nav_orbslam3/visual_map_builder.py` into a
-  shared spot at that point (the v1 tree keeps it in `common/` for exactly this reason).
+## Status
+
+- ✅ Core runner + keyboard teleop.
+- **Part 1 SLAM/Nav2 stacks** (matched real/sim room; see *Part 1* above):
+  - ✅ `nav_lidar` — LiDAR-only Nav2 (geometry baseline)
+  - ✅ `nav_depth` — LiDAR + raw depth Nav2 (geometry/depth baseline)
+  - ✅ `nav_rgb` — RTAB-Map **RGB-D + LiDAR** + Nav2
+  - ✅ `nav_cuvslam_nvblox` — Isaac ROS Visual SLAM (cuVSLAM) + nvblox + Nav2
+    (launch wired to `~/projects/slam_source`; requires the Isaac ROS packages to
+    be colcon-built + sourced — see `nav_cuvslam_nvblox/README.md`)
+  - ◐ `nav_orbslam3` — ORB-SLAM3 + LiDAR + Nav2 (optional/stretch comparison)
+- Not Part 1 (archived/inactive, preserved): `nav_dpvo_archived` (DPVO monocular VO —
+  kept for the later VO comparison); randomized-object experiments under
+  `nav_experiment/` (paused, preserved).
+- The systems differ **only in what supplies `map->odom`** and what fills the
+  costmap (the controlled variables). Nav2, the shared planner/controller and the
+  `/cmd_vel` output are the same upstream `ugv_nav` stack in every one:
+
+  | system | localizer | localization inputs | obstacle/costmap | LiDAR |
+  |---|---|---|---|:--:|
+  | `nav_lidar` | slam_toolbox | `/scan` | LiDAR `/scan` | ✅ |
+  | `nav_depth` | slam_toolbox | `/scan` | LiDAR `/scan` + depth cloud | ✅ |
+  | `nav_rgb` | RTAB-Map RGB-D + LiDAR | RGB + depth + `/scan` | LiDAR `/scan` + RGB-D cloud | ✅ |
+  | `nav_cuvslam_nvblox` | cuVSLAM (RGB-D, IMU opt.) | RGB + depth (+ IMU) | nvblox ESDF slice | – |
+  | `nav_orbslam3` | ORB-SLAM3 RGB-D | RGB + depth | LiDAR `/scan` | ✅ |
+  | `nav_dpvo_archived` | DPVO (monocular, learned) | RGB only | LiDAR `/scan` | ✅ |
 ```

@@ -1,0 +1,29 @@
+[Unit]
+Description=sim2real overhead C920e -> desktop UDP stream
+# Wait for the network (and Tailscale, if present) before streaming. UDP needs
+# no listener, so it's fine to start blasting even if the desktop isn't up yet.
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+# Give the USB camera + Tailscale a moment to settle after boot.
+ExecStartPre=/bin/sleep 5
+ExecStart=/opt/sim2real/stream_camera.sh
+# Keep the stream alive across camera hiccups / network flaps.
+Restart=always
+RestartSec=3
+# ffmpeg returns 255 (and 143 on SIGTERM) when stopped - treat those as a clean
+# stop so `systemctl stop` doesn't leave the unit "failed" and block the next start.
+SuccessExitStatus=255 143
+
+# --- stream settings (edit here, then: sudo systemctl daemon-reload && restart) ---
+Environment=DESKTOP_IP=100.107.253.10
+Environment=PORT=5000
+Environment=RES=1280x720
+Environment=FPS=30
+Environment=BITRATE=4M
+
+[Install]
+WantedBy=multi-user.target

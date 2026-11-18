@@ -1,0 +1,76 @@
+surface: concrete
+combine_mode: average
+floor_friction_band:
+  static:
+  - 0.6
+  - 1.0
+  dynamic:
+  - 0.5
+  - 0.85
+measured:
+  base_mass: 1.40495
+  wheel_mass: 0.08
+calibrated:
+  wheel_distance: 0.32276890691008453
+  max_linear_speed: 0.6322228393554687
+  max_angular_speed: 2.73331554412842
+  max_acceleration: 2.399460035688986
+  max_deceleration: 3.7535201938660725
+  max_angular_acceleration: 6.321454831266573
+  corner_mu_dynamic: 1.1117800587415703
+  corner_mu_static: 1.1967303944304573
+  middle_mu_dynamic: 0.9508835066631429
+  middle_mu_static: 1.1339675908386708
+  floor_mu_dynamic: 0.682788600534201
+  floor_mu_static: 0.8469466426372512
+  drive_damping: 7881.242602174203
+  drive_max_force: 7.691043415534949
+  base_linear_damping: 2.682971191406252
+  base_angular_damping: 3.8079711914062475
+fixed: {}
+stage_results:
+  iteration_1:
+    wheel_distance: 0.32276890691008453
+    max_linear_speed: 0.6322228393554687
+    max_angular_speed: 2.73331554412842
+    max_acceleration: 2.399460035688986
+    max_deceleration: 3.7535201938660725
+    max_angular_acceleration: 6.321454831266573
+    corner_mu_dynamic: 1.1117800587415703
+    corner_mu_static: 1.1967303944304573
+    middle_mu_dynamic: 0.9508835066631429
+    middle_mu_static: 1.1339675908386708
+    floor_mu_dynamic: 0.682788600534201
+    floor_mu_static: 0.8469466426372512
+    drive_damping: 7881.242602174203
+    drive_max_force: 7.691043415534949
+    base_linear_damping: 2.682971191406252
+    base_angular_damping: 3.8079711914062475
+    rms_z: 2.34176591440063
+sim_calibration_yaml:
+  mass:
+    base_link: 1.40495
+    wheel: 0.08
+  differential_controller:
+    wheelDistance: 0.32276890691008453
+    maxLinearSpeed: 0.6322228393554687
+    maxAngularSpeed: 2.73331554412842
+    maxAcceleration: 2.399460035688986
+    maxDeceleration: 3.7535201938660725
+    maxAngularAcceleration: 6.321454831266573
+  wheel_friction:
+    corner_wheel:
+      dynamicFriction: 1.1117800587415703
+      staticFriction: 1.1967303944304573
+    middle_wheel:
+      dynamicFriction: 0.9508835066631429
+      staticFriction: 1.1339675908386708
+  floor_friction:
+    dynamicFriction: 0.682788600534201
+    staticFriction: 0.8469466426372512
+  wheel_drive:
+    damping: 7881.242602174203
+    maxForce: 7.691043415534949
+  drag:
+    base_linear_damping: 2.682971191406252
+    base_angular_damping: 3.8079711914062475

@@ -1,0 +1,85 @@
+{
+  "rows": [
+    {
+      "station": "T1_straight",
+      "accepted": false,
+      "error": "[station] T1_straight: REJECTED via camera in 50s - camera 1.0 cm/6.5 deg, lidar 0.9 cm/6.7 deg",
+      "rep": 1
+    },
+    {
+      "station": "T1_straight",
+      "accepted": false,
+      "error": "[station] T1_straight: REJECTED via camera in 47s - camera 1.1 cm/7.3 deg, lidar 1.3 cm/7.0 deg",
+      "rep": 2
+    },
+    {
+      "station": "T2_spin",
+      "taught": true,
+      "method": "lidar",
+      "fine_moves": 2,
+      "stationary": true,
+      "camera_pose": [
+        0.4990127204074365,
+        0.4850075149936788,
+        1.5518598539574204
+      ],
+      "camera_err_m": 0.019910910463886974,
+      "camera_err_deg": 1.0995591336201855,
+      "time_s": 36.436530351638794,
+      "lidar_err_m": 0.019612076165493528,
+      "lidar_err_deg": 0.973425328898114,
+      "lidar_fit_mm": 9.174929626428636,
+      "lidar_inliers": 0.992822966507177,
+      "cam_vs_lidar_m": 0.0017491394912976896,
+      "cam_vs_lidar_deg": 0.12613380472208263,
+      "accepted": true,
+      "rep": 1
+    },
+    {
+      "station": "T2_spin",
+      "taught": true,
+      "method": "lidar",
+      "fine_moves": 0,
+      "stationary": true,
+      "camera_pose": [
+        0.5120065658512831,
+        0.485725521872985,
+        1.5448694647061934
+      ],
+      "camera_err_m": 0.020393481236168756,
+      "camera_err_deg": 0.6990393323712708,
+      "time_s": 25.5089852809906,
+      "lidar_err_m": 0.019435051004338694,
+      "lidar_err_deg": 0.7406416041475201,
+      "lidar_fit_mm": 9.76285225116183,
+      "lidar_inliers": 0.987146529562982,
+      "cam_vs_lidar_m": 0.001015348768982239,
+      "cam_vs_lidar_deg": 0.04160227177625636,
+      "accepted": true,
+      "rep": 2
+    },
+    {
+      "station": "T4_arc",
+      "accepted": false,
+      "error": "[station] T4_arc: REJECTED via camera in 35s - camera 1.7 cm/3.1 deg, lidar 1.3 cm/2.8 deg",
+      "rep": 1
+    },
+    {
+      "station": "T4_arc",
+      "accepted": false,
+      "error": "[station] T4_arc: REJECTED via camera in 32s - camera 0.7 cm/3.2 deg, lidar 0.6 cm/3.7 deg",
+      "rep": 2
+    }
+  ],
+  "summary": {
+    "T2_spin": {
+      "accepted": "2/2",
+      "camera_spread_mean_cm": 0.65,
+      "camera_spread_max_cm": 0.65,
+      "camera_yaw_sd_deg": 0.2,
+      "lidar_err_mean_cm": 1.95,
+      "lidar_err_max_cm": 1.96,
+      "mean_time_s": 31.0
+    }
+  }
+}

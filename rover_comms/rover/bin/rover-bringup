@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# rover-bringup — launch the Waveshare UGV ROS 2 driver with the Discovery
+# Server environment applied, plus the cmd_vel deadman watchdog, so the desktop
+# can see /cmd_vel and the rover's real /scan,/odom,/imu,/tf topics AND the
+# rover stops itself if a remote command link drops.
+#
+# Env knobs (with defaults matching the existing jetson_rover_setup):
+#   UGV_BRINGUP_LAUNCH     (default bringup_imu_ekf.launch.py)
+#   UGV_PUB_ODOM_TF        (default false)
+#   UGV_USE_RVIZ           (default false)
+#   ROVER_COMMS_MODE       (near|far; default from rover-mode / far)
+#   ROVER_CMDVEL_WATCHDOG  (1=start deadman watchdog [default], 0=skip)
+set -eo pipefail
+
+LAUNCH_FILE="${UGV_BRINGUP_LAUNCH:-bringup_imu_ekf.launch.py}"
+PUB_ODOM_TF="${UGV_PUB_ODOM_TF:-false}"
+USE_RVIZ="${UGV_USE_RVIZ:-false}"
+WATCHDOG="${ROVER_CMDVEL_WATCHDOG:-1}"
+
+ROVER_ENV="$(command -v rover-env || echo /usr/local/bin/rover-env)"
+WATCHDOG_BIN="$(command -v rover-cmdvel-watchdog || echo /usr/local/bin/rover-cmdvel-watchdog)"
+
+WD_PID=""
+cleanup() { [ -n "${WD_PID}" ] && kill "${WD_PID}" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
+
+# Start the deadman watchdog in the background (safety for remote teleop).
+if [ "${WATCHDOG}" = "1" ] && [ -x "${WATCHDOG_BIN}" ]; then
+  echo "[rover-bringup] starting cmd_vel deadman watchdog"
+  "${WATCHDOG_BIN}" &
+  WD_PID=$!
+else
+  echo "[rover-bringup] cmd_vel watchdog DISABLED (ROVER_CMDVEL_WATCHDOG=${WATCHDOG})"
+fi
+
+# Run the driver in the foreground (systemd tracks this; watchdog dies with the
+# service via control-group kill, or via the trap above on manual Ctrl-C).
+"${ROVER_ENV}" \
+  ros2 launch ugv_bringup "${LAUNCH_FILE}" \
+    pub_odom_tf:="${PUB_ODOM_TF}" \
+    use_rviz:="${USE_RVIZ}" \
+    "$@"

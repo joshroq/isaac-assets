@@ -1,0 +1,20 @@
+name: T3b_top_speed
+# Out-and-back speed bursts ABOVE max_linear_speed's lower bound (0.2 m/s), so a clamp is
+# observable: flat v_ss_s<i> across the fast steps => maxLinearSpeed. Each forward burst is
+# followed by an equal reverse burst, so the rover returns to its start; the furthest excursion
+# is ~0.5 m (0.6 m/s x 0.8 s + ramp/coast). Start 0.6 m from a grid edge, facing it away.
+# Features: v_ss_s0..s5 (|speed| per burst, last 40 %), v_ss_max.
+steps:
+  - {linear:  0.00, angular: 0.0, duration: 1.0}
+  - {linear:  0.30, angular: 0.0, duration: 0.8}
+  - {linear:  0.00, angular: 0.0, duration: 1.0}
+  - {linear: -0.30, angular: 0.0, duration: 0.8}
+  - {linear:  0.00, angular: 0.0, duration: 1.0}
+  - {linear:  0.45, angular: 0.0, duration: 0.8}
+  - {linear:  0.00, angular: 0.0, duration: 1.0}
+  - {linear: -0.45, angular: 0.0, duration: 0.8}
+  - {linear:  0.00, angular: 0.0, duration: 1.0}
+  - {linear:  0.60, angular: 0.0, duration: 0.8}
+  - {linear:  0.00, angular: 0.0, duration: 1.0}
+  - {linear: -0.60, angular: 0.0, duration: 0.8}
+  - {linear:  0.00, angular: 0.0, duration: 1.5}

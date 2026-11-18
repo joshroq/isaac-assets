@@ -1,0 +1,15 @@
+name: R5_nav_pattern
+# A Nav2-like command string: rotation-shim spin -> arc -> straight -> opposite arc -> stop, then the exact reverse to come back.
+# Response-map battery (Nav2 TEB/rotation-shim + keyboard teleop envelope: |v| <= 0.26 m/s, |w| <= 1.0 rad/s). 11 steps, 13.4 s.
+steps:
+  - {linear: +0.00, angular: +0.00, duration: 1.0}
+  - {linear: +0.00, angular: +0.80, duration: 1.2}
+  - {linear: +0.20, angular: +0.30, duration: 1.5}
+  - {linear: +0.26, angular: +0.00, duration: 1.0}
+  - {linear: +0.15, angular: -0.40, duration: 1.5}
+  - {linear: +0.00, angular: +0.00, duration: 1.0}
+  - {linear: -0.15, angular: +0.40, duration: 1.5}
+  - {linear: -0.26, angular: -0.00, duration: 1.0}
+  - {linear: -0.20, angular: -0.30, duration: 1.5}
+  - {linear: +0.00, angular: -0.80, duration: 1.2}
+  - {linear: +0.00, angular: +0.00, duration: 1.0}

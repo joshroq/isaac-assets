@@ -1,0 +1,5 @@
+# Sim->real motion calibration. A /cmd_vel that moves the SIM rover X should move
+# the REAL rover X. Multiply incoming commands by these (1.0 = no correction).
+# Fill in after running calibrate_motion.py.
+linear_scale: 1.0     # forward/back:  real_cmd.linear.x  = sim.linear.x  * linear_scale
+angular_scale: 1.0    # turning:       real_cmd.angular.z = sim.angular.z * angular_scale

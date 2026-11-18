@@ -1,0 +1,10 @@
+name: T3_speed_sweep
+# Rising speed steps. Discriminator: flat plateau => v_lim clamp; soft shoulder => mu/torque/drag.
+# Start at one edge facing across (~0.6 m of travel).
+steps:
+  - {linear: 0.00, angular: 0.0, duration: 1.0}
+  - {linear: 0.05, angular: 0.0, duration: 1.2}
+  - {linear: 0.10, angular: 0.0, duration: 1.2}
+  - {linear: 0.15, angular: 0.0, duration: 1.2}
+  - {linear: 0.20, angular: 0.0, duration: 1.2}
+  - {linear: 0.00, angular: 0.0, duration: 2.0}

@@ -1,0 +1,30 @@
+diff --git a/src/ugv_main/ugv_bringup/ugv_bringup/ugv_bringup.py b/src/ugv_main/ugv_bringup/ugv_bringup/ugv_bringup.py
+index 0306467..697fc1d 100644
+--- a/src/ugv_main/ugv_bringup/ugv_bringup/ugv_bringup.py
++++ b/src/ugv_main/ugv_bringup/ugv_bringup/ugv_bringup.py
+@@ -12,14 +12,10 @@ from sensor_msgs.msg import Imu, MagneticField
+ import math
+ import os
+ 
+-def is_jetson():
+-    result = any("ugv_jetson" in root for root, dirs, files in os.walk("/"))
+-    return result
+-
+-if is_jetson():
+-    serial_port = '/dev/ttyTHS1'
+-else:
+-    serial_port = '/dev/ttyAMA0'
++# Serial port to the base ESP32. Jetson uses /dev/ttyTHS1; overridable via env.
++# (Was auto-detected by scanning the whole filesystem for ugv_jetson: slow, and
++#  broke on this rover, wrongly picking the Pi port /dev/ttyAMA0. Matches ugv_driver.)
++serial_port = os.environ.get("UGV_SERIAL_PORT", "/dev/ttyTHS1")
+ 
+ # Helper class for reading lines from a serial port
+ class ReadLine:
+@@ -176,4 +172,4 @@ def main(args=None):
+     rclpy.shutdown()  # Shutdown ROS
+ 
+ if __name__ == '__main__':
+-    main()
+\ No newline at end of file
++    main()

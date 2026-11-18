@@ -1,0 +1,14 @@
+[Unit]
+Description=First-boot Tailscale bootstrap (self-disabling)
+After=network-online.target
+Wants=network-online.target
+# Only run while the one-time auth key is still present.
+ConditionPathExists=/boot/firmware/ts-authkey
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ts-firstboot.sh
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

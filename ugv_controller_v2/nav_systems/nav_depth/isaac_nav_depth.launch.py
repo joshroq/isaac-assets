@@ -1,5 +1,14 @@
 """Nav system: DEPTH + LIDAR fusion (NO RGB) for the BAKED-GRAPH rover (v2).
 
+PART 1 STACK HEADER  (Part 1 #2 — LiDAR + raw depth Nav2)
+    Localization       : LiDAR SLAM (slam_toolbox)
+    Obstacle / costmap : LiDAR /scan + raw depth PointCloud2
+    RGB used           : no
+    Depth used         : yes
+    LiDAR used         : yes
+    IMU used           : no
+    Role               : geometry/depth baseline
+
 The appearance-independent sibling of nav_rgb. It navigates with the depth camera
 AND the lidar, but never the RGB image:
 
@@ -42,6 +51,13 @@ RUN (Isaac running this system's rover elsewhere):
   ros2 launch <this file>                                  # teb default, 3D RViz
   ros2 launch <this file> use_localplan:=rpp
   ros2 launch <this file> use_robot_state_publisher:=true  # USD-iteration fallback
+
+KNOWN-MAP MODE (thesis Experiment A — load the shared ground-truth map, localize
+with AMCL instead of building the map live; depth still fuses into the costmaps):
+  # build the map once: ~/Applications/isaacsim/python.sh experiments/make_occupancy_map.py
+  ros2 launch <this file> use_slam:=false \
+      map:=<repo>/experiments/maps/warehouse/map.yaml
+Default (use_slam:=true) is unchanged: online slam_toolbox (cold-start Experiment B).
 """
 
 import os
@@ -217,6 +233,7 @@ def _launch_setup(context, *args, **kwargs):
     namespace = LaunchConfiguration("namespace")
     use_namespace = LaunchConfiguration("use_namespace")
     use_sim_time = LaunchConfiguration("use_sim_time")
+    use_slam = LaunchConfiguration("use_slam")
     use_localization = LaunchConfiguration("use_localization")
     autostart = LaunchConfiguration("autostart")
     use_composition = LaunchConfiguration("use_composition")
@@ -292,8 +309,10 @@ def _launch_setup(context, *args, **kwargs):
         output="screen",
     ))
 
-    # The real rover's Nav2 stack, LIDAR SLAM branch (use_slam:=True) — identical to
-    # nav_lidar. Sim data topics are namespaced, so redirect just /scan and /odom to
+    # The real rover's Nav2 stack — identical to nav_lidar. use_slam selects the
+    # branch: true (default) = live lidar SLAM; false = map_server + AMCL on `map`
+    # (depth still fuses into the costmaps via the params below either way).
+    # Sim data topics are namespaced, so redirect just /scan and /odom to
     # the sim's names (propagates into the include). /tf, /tf_static, /clock, /cmd_vel
     # stay plain. The depth cloud source added to the params is already on its final
     # topic, so it needs no remap.
@@ -305,7 +324,7 @@ def _launch_setup(context, *args, **kwargs):
             launch_arguments={
                 "namespace": namespace,
                 "use_namespace": use_namespace,
-                "use_slam": "True",
+                "use_slam": use_slam,
                 "use_sim_time": use_sim_time,
                 "use_localization": use_localization,
                 "params_file": params_file,
@@ -333,6 +352,17 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[{"use_sim_time": use_sim_time}],
         output="screen",
     ))
+
+    # Raw depth-camera image in its own rqt_image_view window (on by default).
+    # Shows Isaac's raw depth image straight off the topic (rqt_image_view
+    # normalizes the 32FC1 depth for display). Disable with use_image_view:=false.
+    actions.append(Node(
+        condition=IfCondition(LaunchConfiguration("use_image_view")),
+        package="rqt_image_view", executable="rqt_image_view",
+        name="depth_raw_image_view",
+        arguments=[DEPTH_IMAGE_TOPIC],
+        output="screen",
+    ))
     return actions
 
 
@@ -347,9 +377,20 @@ def generate_launch_description():
         DeclareLaunchArgument("use_localplan", default_value="teb",
                               description="Nav2 local planner: teb, dwa, rpp, mppi "
                                           "(teb needs ros-humble-teb-local-planner)"),
+        DeclareLaunchArgument("use_slam", default_value="true",
+                              description="true (default): online LiDAR SLAM "
+                                          "(slam_toolbox) builds the map live "
+                                          "(cold-start / Experiment B). false: "
+                                          "known-map mode -- load `map:` with "
+                                          "map_server + `use_localization` (AMCL) "
+                                          "for Experiment A. AMCL's initial pose "
+                                          "(params default 0,0,0) matches the "
+                                          "make_occupancy_map.py map origin. Depth "
+                                          "still fuses into the costmaps either way."),
         DeclareLaunchArgument("use_localization", default_value="amcl",
-                              description="Upstream arg retained for parity; "
-                                          "ignored while use_slam is forced true"),
+                              description="Localizer used when use_slam:=false "
+                                          "(amcl | emcl2 | ...); ignored when "
+                                          "use_slam:=true"),
         DeclareLaunchArgument("use_robot_state_publisher", default_value="false",
                               description="Run robot_state_publisher from the URDF. "
                                           "OFF by default: the baked USD owns all TF."),
@@ -394,5 +435,8 @@ def generate_launch_description():
                               description="Start upstream speed filter info servers"),
         DeclareLaunchArgument("use_rviz", default_value="true",
                               description="Launch RViz with the 3D depth navigation view"),
+        DeclareLaunchArgument("use_image_view", default_value="true",
+                              description="Open the raw depth-camera image in a separate "
+                                          "rqt_image_view window (needs ros-humble-rqt-image-view)"),
         OpaqueFunction(function=_launch_setup),
     ])

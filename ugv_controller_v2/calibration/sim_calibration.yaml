@@ -1,0 +1,62 @@
+# One-time sim->real motion calibration for jetson_rover_v2.usd.
+#
+# Tune the SIMULATED rover's physics so it moves like the REAL rover, then bake the
+# values into the USD ONCE with apply_sim_calibration.py. There is NO runtime scaler:
+# the calibrated sim publishes /cmd_vel that the real rover can follow directly, and
+# a recorded sim command sequence replays on the real rover to the same end pose.
+#
+# Current fitted parameters and test assignments: sim2real_calib/optimize/README.md.
+# The historical Isaac sensitivity sweep is in docs/PARAMETER_TEST_VALIDATION.md.
+#
+# GEOMETRY IS LOCKED: wheel radius, track, wheelbase, wheel placement and collider shapes are
+# never authored by calibration (calib_params refuses; a wheelRadius entry here is ignored).
+# wheelDistance below is the only geometric-looking value that is tuned: it is the
+# controller's turning gain, not the physical track (0.1745 m).
+
+differential_controller:      # /World/ugv_rover/Drive_Graph/SkidSteer_Controller/DiffController
+  wheelDistance:  0.5         # m  — TURNING GAIN. A skid-steer turns slower than its physical
+                              #      track predicts; RAISE this to make sim yaw-per-command faster.
+                              #      Fit on spins AND arcs together with floor friction (stage 4).
+  maxLinearSpeed: 0.5         # m/s cap (match the real rover's top speed)
+  maxAngularSpeed: 1.9        # rad/s cap (match the real rover's top yaw rate)
+  # Command ramps (0 = unset). Linear limits only act when BOTH are > 0; setting any of these
+  # rewires the controller onto the playback tick so it has a dt (calib_params.enable_tick_dt).
+  maxAcceleration: 0.0        # m/s^2  linear ramp-up   (the real firmware/motor ramp)
+  maxDeceleration: 0.0        # m/s^2  linear ramp-down (commanded stops)
+  maxAngularAcceleration: 0.0 # rad/s^2 yaw ramp
+
+wheel_friction:               # FITTED jointly with floor friction and turning gain (stage 4).
+  corner_wheel:               # Driven corner wheels; static >= dynamic for each material.
+    dynamicFriction: 1.0      # Defaults retained; the optimiser can lower/raise these values.
+    staticFriction:  1.2
+  middle_wheel:               # Passive middle wheels; separate coefficients are fitted too.
+    dynamicFriction: 1.0
+    staticFriction:  1.2
+
+wheel_drive:                  # the 4 corner wheel joints (velocity drive: damping=gain, stiffness=0)
+  damping:  10000.0           # FITTED stage 2; log search 1e-6..20000 includes low drive gains.
+  maxForce: 3.4028235e38      # torque cap [N m]; a TURNING knob (spins stall at 0.05; fitted in stage 4)
+
+mass:                         # MEASURED (weigh the rover / a wheel); never fitted. Authoring a mass
+  base_link: 1.40495          # rescales that body's inertia so mass and inertia stay consistent.
+  wheel:     0.08             # kg each
+
+# FLOOR friction (per-surface, fitted alongside wheel friction): authored at runtime or
+# into an ENV USD (apply_sim_calibration.py --bake-floor). Values must lie inside the
+# rubber-on-floor literature band (calib_params.SURFACE_FRICTION), dynamic <= static:
+#   concrete  static 0.60-1.00  dynamic 0.50-0.85
+#   carpet    static 0.60-1.00  dynamic 0.50-0.90
+#   foam/EVA  static 0.70-1.20  dynamic 0.50-1.00
+# Defaults are the concrete band midpoints (the reference surface).
+floor_friction:
+  dynamicFriction: 0.675
+  staticFriction:  0.8
+
+drag:                         # FITTED stage 5; stiff wheel drives may mask these effects.
+  base_linear_damping:  0.0   # Straight speed + stopping distance/time; search 0..8 [1/s].
+  base_angular_damping: 0.05  # Spin rate + spin stopping angle/time; search 0..8 [1/s].
+
+# frictionCombineMode on the wheel + floor materials. 'min' => effective mu = min(wheel, floor)
+# Under 'min', coefficients above the opposing material form a flat region; the optimiser
+# explores below that region. Use the same mode when collecting targets, fitting and running.
+friction_combine_mode: average

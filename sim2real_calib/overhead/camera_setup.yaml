@@ -1,0 +1,23 @@
+resolution:
+- 1280
+- 720
+horizontal_fov_deg: 70.4
+position_m:
+- 0.577871195910103
+- -0.2813232263515758
+- 1.478158387008331
+look_at_m:
+- 0.43154110699698023
+- 0.32219265640253847
+- 0.0
+up_hint:
+- -0.05844741239667062
+- -0.92623573228319
+- -0.37238591303371865
+grid_size_m: 1.0
+grid_origin_m:
+- 0.0
+- 0.0
+_intrinsics_source: "nominal 70.4\xB0 FOV"
+_note: "position_m/look_at_m are ESTIMATES from the grid homography + nominal 70.4\xB0\
+  \ FOV; replace with measured values (or --height) to make the view exact."

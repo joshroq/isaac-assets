@@ -1,0 +1,14 @@
+name: T6_spin_sweep
+# In-place yaw-rate steps 0.4 -> 0.8 -> 1.2 -> 1.6 rad/s (2 s each), then stop. The rates
+# straddle max_angular_speed's search range (0.8-3.0) so a clamp shows as flat omega_s<i>, and
+# the rate-vs-command curve exposes how scrub (floor mu, torque cap) bends with speed - which a
+# single 0.6 rad/s spin cannot. ~8 rad (1.3 turns) total; place the rover at the grid centre.
+# Features: omega_s0..s3 (mean rate over each step's last 40 %, robust to stick-slip),
+# omega_max, spin_coast_angle / spin_coast_time.
+steps:
+  - {linear: 0.0, angular: 0.0, duration: 1.0}
+  - {linear: 0.0, angular: 0.4, duration: 2.0}
+  - {linear: 0.0, angular: 0.8, duration: 2.0}
+  - {linear: 0.0, angular: 1.2, duration: 2.0}
+  - {linear: 0.0, angular: 1.6, duration: 2.0}
+  - {linear: 0.0, angular: 0.0, duration: 2.0}

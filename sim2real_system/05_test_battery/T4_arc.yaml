@@ -1,0 +1,7 @@
+name: T4_arc
+# Constant forward + turn => arc of radius R = v/omega. Isolates the D/chi(mu) ratio
+# (turn geometry under grip). Start at a corner so the ~0.3 m-radius arc stays on-grid.
+steps:
+  - {linear: 0.00, angular: 0.0, duration: 1.0}
+  - {linear: 0.12, angular: 0.4, duration: 6.0}   # arc, R ~ 0.30 m
+  - {linear: 0.00, angular: 0.0, duration: 2.0}

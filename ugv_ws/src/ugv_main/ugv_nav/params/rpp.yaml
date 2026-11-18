@@ -159,16 +159,19 @@ controller_server:
       angular_dist_threshold: 0.3
       forward_sampling_distance: 0.5
       rotate_to_goal_heading: True
-      rotate_to_heading_angular_vel: 0.8
-      max_angular_accel: 3.2
+      # Visual SLAM (cuVSLAM + ORB-SLAM3) loses tracking during fast in-place rotation.
+      # Slow the rotation-shim + RPP heading rotation from 1.8 to 0.5 rad/s so the camera
+      # keeps enough frame overlap to track through turns (rf2o/wheel odom coast anyway).
+      rotate_to_heading_angular_vel: 0.5
+      max_angular_accel: 1.2
       simulate_ahead_time: 2.5
       primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.5
+      desired_linear_vel: 0.3
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 1.8
+      rotate_to_heading_angular_vel: 0.5
       transform_tolerance: 0.1
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
@@ -186,7 +189,7 @@ controller_server:
       use_rotate_to_heading: true
       allow_reversing: false
       rotate_to_heading_min_angle: 0.785
-      max_angular_accel: 3.2
+      max_angular_accel: 1.2
       max_robot_pose_search_dist: 10.0
       min_distance_to_obstacle: 0.0
       stateful: true
@@ -407,9 +410,11 @@ velocity_smoother:
     scale_velocities: False
     # feedback: "CLOSED_LOOP"
     feedback: "OPEN_LOOP"
-    max_velocity: [0.26, 0.0, 1.0]
-    min_velocity: [-0.26, 0.0, -1.0]
-    max_accel: [0.4, 0.0, 1.0]
+    # Angular capped at 0.5 rad/s (was 1.0) so visual SLAM keeps tracking through turns;
+    # this is the real enforcer of rotation speed for the cuvslam/orbslam stacks.
+    max_velocity: [0.26, 0.0, 0.5]
+    min_velocity: [-0.26, 0.0, -0.5]
+    max_accel: [0.4, 0.0, 0.6]
     max_decel: [-0.4, 0.0, -1.0]
     odom_topic: "odom"
     odom_duration: 0.2

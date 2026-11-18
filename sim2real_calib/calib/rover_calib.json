@@ -1,0 +1,12 @@
+{
+  "marker_to_center": {
+    "forward_m": 0.0729,
+    "lateral_m": -0.0005
+  },
+  "lever_arm_m": 0.0762,
+  "footprint": {
+    "length_m": 0.24,
+    "width_m": 0.17
+  },
+  "note": "record_traj camera mode adds this offset to report the rover CENTER."
+}

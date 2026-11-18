@@ -1,5 +1,14 @@
 """Nav system: LIDAR-ONLY SLAM (slam_toolbox) for the BAKED-GRAPH rover.
 
+PART 1 STACK HEADER  (Part 1 #1 — LiDAR-only Nav2)
+    Localization       : LiDAR SLAM (slam_toolbox)
+    Obstacle / costmap : LiDAR /scan
+    RGB used           : no
+    Depth used         : no
+    LiDAR used         : yes
+    IMU used           : no
+    Role               : geometry-only baseline
+
 This is the ROS 2 side for driving jetson_rover_v2.usd with the real rover's own
 `ugv_nav` Nav2 stack. It includes upstream
 `ugv_nav/launch/nav_bringup/nav2_bringup.launch.py` with `use_slam:=True`, so
@@ -34,6 +43,16 @@ RUN (Isaac running this system's rover elsewhere):
   ros2 launch <this file>                                  # teb default
   ros2 launch <this file> use_localplan:=rpp
   ros2 launch <this file> use_robot_state_publisher:=true  # USD-iteration fallback
+
+KNOWN-MAP MODE (thesis Experiment A — load the shared ground-truth map, localize
+with AMCL instead of building the map live):
+  # 1) build the map once from the sim USD (see experiments/make_occupancy_map.py):
+  #    ~/Applications/isaacsim/python.sh experiments/make_occupancy_map.py
+  # 2) launch known-map: use_slam:=false + the map. AMCL auto-sets its initial pose
+  #    to (0,0,0) = the rover start = the map origin, so no manual 2D-Pose-Estimate.
+  ros2 launch <this file> use_slam:=false \
+      map:=<repo>/experiments/maps/warehouse/map.yaml
+Default (use_slam:=true) is unchanged: online slam_toolbox (cold-start Experiment B).
 """
 
 import os
@@ -154,6 +173,7 @@ def _launch_setup(context, *args, **kwargs):
     namespace = LaunchConfiguration("namespace")
     use_namespace = LaunchConfiguration("use_namespace")
     use_sim_time = LaunchConfiguration("use_sim_time")
+    use_slam = LaunchConfiguration("use_slam")
     use_localization = LaunchConfiguration("use_localization")
     autostart = LaunchConfiguration("autostart")
     use_composition = LaunchConfiguration("use_composition")
@@ -222,7 +242,8 @@ def _launch_setup(context, *args, **kwargs):
         )
     )
 
-    # The real rover's Nav2 stack, verbatim: lidar SLAM branch (use_slam:=True).
+    # The real rover's Nav2 stack, verbatim. use_slam selects the branch: true
+    # (default) = live lidar SLAM (slam_toolbox); false = map_server + AMCL on `map`.
     #
     # The sim publishes its sensor DATA under the `ugv_sim` namespace so it can run
     # alongside the real rover (which uses the plain names). The upstream stack
@@ -239,7 +260,7 @@ def _launch_setup(context, *args, **kwargs):
                 launch_arguments={
                     "namespace": namespace,
                     "use_namespace": use_namespace,
-                    "use_slam": "True",
+                    "use_slam": use_slam,
                     "use_sim_time": use_sim_time,
                     "use_localization": use_localization,
                     "params_file": params_file,
@@ -286,9 +307,19 @@ def generate_launch_description():
         DeclareLaunchArgument("use_localplan", default_value="teb",
                               description="Nav2 local planner: teb, dwa, rpp, mppi "
                                           "(teb needs ros-humble-teb-local-planner)"),
+        DeclareLaunchArgument("use_slam", default_value="true",
+                              description="true (default): online LiDAR SLAM "
+                                          "(slam_toolbox) builds the map live "
+                                          "(cold-start / Experiment B). false: "
+                                          "known-map mode -- load `map:` with "
+                                          "map_server + `use_localization` (AMCL) "
+                                          "for Experiment A. AMCL's initial pose "
+                                          "(params default 0,0,0) matches the "
+                                          "make_occupancy_map.py map origin."),
         DeclareLaunchArgument("use_localization", default_value="amcl",
-                              description="Upstream arg retained for parity; "
-                                          "ignored while use_slam is forced true"),
+                              description="Localizer used when use_slam:=false "
+                                          "(amcl | emcl2 | ...); ignored when "
+                                          "use_slam:=true"),
         DeclareLaunchArgument("use_robot_state_publisher", default_value="false",
                               description="Run robot_state_publisher from the URDF. "
                                           "OFF by default: the baked USD owns all TF. "

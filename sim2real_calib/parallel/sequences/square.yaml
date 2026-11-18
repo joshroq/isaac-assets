@@ -1,0 +1,13 @@
+name: square
+# Gentle ~square inside the 1x1 m grid. Tune linear/durations to your rover + grid.
+# Skid-steer: angular.z ~0.5 rad/s for ~3.14 s ≈ 90 deg turn in place.
+steps:
+  - {linear: 0.00, angular: 0.0, duration: 1.0}   # settle (lets both rovers sync)
+  - {linear: 0.12, angular: 0.0, duration: 3.0}   # forward ~0.36 m
+  - {linear: 0.00, angular: 0.5, duration: 3.14}  # turn ~90 deg
+  - {linear: 0.12, angular: 0.0, duration: 3.0}
+  - {linear: 0.00, angular: 0.5, duration: 3.14}
+  - {linear: 0.12, angular: 0.0, duration: 3.0}
+  - {linear: 0.00, angular: 0.5, duration: 3.14}
+  - {linear: 0.12, angular: 0.0, duration: 3.0}
+  - {linear: 0.00, angular: 0.0, duration: 1.0}   # stop

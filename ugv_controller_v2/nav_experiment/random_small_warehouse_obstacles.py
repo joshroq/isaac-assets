@@ -8,9 +8,14 @@ v2 nav launch files.
 Obstacles are created with NVIDIA Replicator and materialized once before
 physics starts:
 
-* ``primitives`` style creates dependency-free boxes and cylinders.
-* ``props`` style references NVIDIA warehouse/YCB assets when an Isaac asset
-  root is available.
+* ``props`` style (the DEFAULT) references real NVIDIA Simple_Warehouse / YCB
+  assets — pallets, card boxes, KLT bins, traffic cones — so the scene looks
+  like a warehouse instead of coloured blocks. Each prop URL is resolved against
+  the Isaac asset root before use; if a single asset cannot be resolved (offline
+  Nucleus, renamed asset), that obstacle falls back to a same-footprint
+  primitive so one missing file never aborts the whole layout.
+* ``primitives`` style creates dependency-free boxes and cylinders (no asset
+  server needed) — useful for fully offline CI.
 * A deterministic rejection sampler places obstacles inside the requested X/Y
   bounds with one global non-overlap check across every template type.
 * ``rep.physics.collider`` makes each obstacle a static collision object.
@@ -60,12 +65,25 @@ PRIMITIVE_TEMPLATES: tuple[ObstacleTemplate, ...] = (
 )
 
 
+# Real NVIDIA warehouse/YCB assets. Each carries a footprint/height/shape/colour
+# so it can fall back to a matching primitive if the asset URL cannot be resolved
+# against the live Isaac asset root (offline Nucleus or a renamed asset). `shape`
+# and `color` are ONLY used by that fallback; the resolved prop uses its own mesh.
 PROP_TEMPLATES: tuple[ObstacleTemplate, ...] = (
-    ObstacleTemplate("pallet", (1.30, 1.05), 0.18, weight=2.0, url="/Isaac/Environments/Simple_Warehouse/Props/SM_PaletteA_01.usd"),
-    ObstacleTemplate("cardbox", (0.62, 0.48), 0.50, weight=4.0, url="/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04.usd"),
-    ObstacleTemplate("klt_bin", (0.60, 0.40), 0.25, weight=2.0, url="/Isaac/Props/KLT_Bin/small_KLT_visual.usd"),
-    ObstacleTemplate("traffic_cone", (0.45, 0.45), 0.72, weight=1.0, url="/Isaac/Environments/Simple_Warehouse/Props/S_TrafficCone.usd"),
-    ObstacleTemplate("cracker_box", (0.26, 0.08), 0.34, weight=1.0, scale=(2.0, 2.0, 2.0), url="/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd"),
+    ObstacleTemplate("pallet", (1.30, 1.05), 0.18, weight=2.0, color=(0.55, 0.35, 0.18),
+                     url="/Isaac/Environments/Simple_Warehouse/Props/SM_PaletteA_01.usd"),
+    ObstacleTemplate("cardbox_d", (0.62, 0.48), 0.50, weight=3.0, color=(0.72, 0.55, 0.32),
+                     url="/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxD_04.usd"),
+    ObstacleTemplate("cardbox_a", (0.52, 0.42), 0.40, weight=3.0, color=(0.70, 0.52, 0.30),
+                     url="/Isaac/Environments/Simple_Warehouse/Props/SM_CardBoxA_01.usd"),
+    ObstacleTemplate("klt_bin", (0.60, 0.40), 0.25, weight=2.0, color=(0.20, 0.45, 0.70),
+                     url="/Isaac/Props/KLT_Bin/small_KLT_visual.usd"),
+    ObstacleTemplate("traffic_cone", (0.45, 0.45), 0.72, weight=1.5, shape="cylinder",
+                     color=(0.90, 0.45, 0.05),
+                     url="/Isaac/Environments/Simple_Warehouse/Props/S_TrafficCone.usd"),
+    ObstacleTemplate("cracker_box", (0.16, 0.06), 0.21, weight=1.0, scale=(2.0, 2.0, 2.0),
+                     color=(0.80, 0.20, 0.15),
+                     url="/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd"),
 )
 
 
@@ -171,12 +189,20 @@ def _place_obstacles(
     return placements
 
 
-def _apply_static_pose_and_collider(rep, group, placement: ObstaclePlacement):
+def _apply_static_pose_and_collider(rep, group, placement: ObstaclePlacement, *, is_prop: bool):
     template = placement.template
-    approximation = "boundingCube" if template.shape != "cylinder" else "convexHull"
+    if is_prop:
+        # Real prop meshes are irregular; a convex hull tracks their shape far
+        # better than an axis-aligned box, and their pivot sits on the floor.
+        approximation = "convexHull"
+        z = 0.0
+    else:
+        # Replicator primitives are centred on their origin, so lift by half height.
+        approximation = "convexHull" if template.shape == "cylinder" else "boundingCube"
+        z = template.height * 0.5
     with group:
         rep.modify.pose(
-            position=(placement.x, placement.y, template.height * 0.5),
+            position=(placement.x, placement.y, z),
             rotation=(0.0, 0.0, placement.yaw_deg),
         )
         rep.physics.collider(approximation_shape=approximation)
@@ -197,13 +223,37 @@ def _build_primitive_group(rep, template, index):
     )
 
 
+def _asset_url_exists(full_url: str) -> bool:
+    """True if a Nucleus/local asset URL resolves. Never raises — a lookup
+    failure just means 'fall back to a primitive for this obstacle'."""
+    try:
+        import omni.client
+
+        result, _ = omni.client.stat(full_url)
+        return result == omni.client.Result.OK
+    except Exception:
+        return False
+
+
 def _build_prop_group(rep, assets_root_path, template, index):
-    return rep.create.from_usd(
-        assets_root_path + template.url,
-        scale=template.scale,
-        parent=ROOT_PATH,
-        name=f"obstacle_{template.name}_{index:03d}",
+    """Return (group, is_prop). Resolves the real warehouse asset; if it cannot
+    be found, builds a same-footprint primitive so one bad URL never aborts the
+    layout."""
+    full_url = assets_root_path + template.url
+    if _asset_url_exists(full_url):
+        group = rep.create.from_usd(
+            full_url,
+            scale=template.scale,
+            parent=ROOT_PATH,
+            name=f"obstacle_{template.name}_{index:03d}",
+        )
+        return group, True
+    print(
+        "[random_small_warehouse_obstacles] "
+        f"WARN {template.name}: asset not found ({full_url}); using primitive fallback",
+        flush=True,
     )
+    return _build_primitive_group(rep, template, index), False
 
 
 def _wait_for_stage_ready(simulation_app, max_frames: int = _MAX_LOAD_FRAMES) -> int:
@@ -243,7 +293,7 @@ def scatter_random_obstacles(
     simulation_app,
     *,
     count: int = 14,
-    obstacle_style: str = "primitives",
+    obstacle_style: str = "props",
     x_range: tuple[float, float] = (-5.0, 5.0),
     y_range: tuple[float, float] = (-5.0, 5.0),
     seed: int | None = None,
@@ -253,7 +303,7 @@ def scatter_random_obstacles(
     import omni.replicator.core as rep
     import omni.usd
 
-    style = "props" if str(obstacle_style).lower() == "props" else "primitives"
+    style = "primitives" if str(obstacle_style).lower() == "primitives" else "props"
     templates = _templates_for(style)
     allocation = _allocate_counts(templates, max(0, count))
 
@@ -269,24 +319,28 @@ def scatter_random_obstacles(
 
         assets_root_path = get_assets_root_path() or ""
         if not assets_root_path:
-            raise RuntimeError(
-                "obstacle_style='props' needs the NVIDIA Isaac asset root. "
-                "Use --obstacle-style primitives or fix the Isaac asset server/cache."
+            print(
+                "[random_small_warehouse_obstacles] "
+                "WARN Isaac asset root unavailable; every prop will fall back to a "
+                "primitive. Configure the Nucleus/asset server for real warehouse "
+                "assets, or pass --obstacle-style primitives to silence this.",
+                flush=True,
             )
 
     placements = _place_obstacles(allocation, x_range, y_range, min_spacing, seed)
 
     authored = 0
+    prop_hits = 0
     placement_counts: dict[str, int] = {}
     for index, placement in enumerate(placements, start=1):
         template = placement.template
-        group = (
-            _build_prop_group(rep, assets_root_path, template, index)
-            if style == "props"
-            else _build_primitive_group(rep, template, index)
-        )
-        _apply_static_pose_and_collider(rep, group, placement)
+        if style == "props":
+            group, is_prop = _build_prop_group(rep, assets_root_path, template, index)
+        else:
+            group, is_prop = _build_primitive_group(rep, template, index), False
+        _apply_static_pose_and_collider(rep, group, placement, is_prop=is_prop)
         placement_counts[template.name] = placement_counts.get(template.name, 0) + 1
+        prop_hits += int(is_prop)
         authored += 1
 
     rep.orchestrator.preview()
@@ -294,10 +348,11 @@ def scatter_random_obstacles(
     _cleanup_replicator_one_shot_graphs(stage)
     simulation_app.update()
 
+    real_props = f" real_props={prop_hits}/{authored}" if style == "props" else ""
     print(
         "[random_small_warehouse_obstacles] "
         f"style={style} seed={'auto' if seed is None else seed} "
-        f"authored={authored}/{count} templates={len(allocation)} "
+        f"authored={authored}/{count}{real_props} templates={len(allocation)} "
         f"load_frames={frames} min_spacing={min_spacing} "
         f"x_range={x_range} y_range={y_range}",
         flush=True,
@@ -313,8 +368,9 @@ def add_random_obstacle_args(parser, *, default_count: int = 14) -> None:
     parser.add_argument(
         "--obstacle-style",
         choices=("primitives", "props"),
-        default="primitives",
-        help="Obstacle visuals: primitives (dependency-free) or props (NVIDIA assets).",
+        default="props",
+        help="Obstacle visuals: props (real NVIDIA warehouse assets, the default) "
+             "or primitives (dependency-free boxes/cylinders for offline use).",
     )
     parser.add_argument(
         "--random-obstacle-count",
@@ -345,7 +401,7 @@ def obstacle_config_from_args(args) -> dict:
     y_range = tuple(sorted((args.random_y_min, args.random_y_max)))
     return {
         "count": max(0, args.random_obstacle_count),
-        "obstacle_style": getattr(args, "obstacle_style", "primitives"),
+        "obstacle_style": getattr(args, "obstacle_style", "props"),
         "x_range": x_range,
         "y_range": y_range,
         "seed": args.random_seed,

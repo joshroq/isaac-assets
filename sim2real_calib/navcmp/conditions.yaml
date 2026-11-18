@@ -1,0 +1,33 @@
+# What each condition label in a navcmp session means.
+# Paths are relative to sim2real_calib/. Pick conditions with --conditions a,b,c.
+#
+# platform real : the physical rover over SSH (ROVER_HOST, default rover-lan); runs the
+#                 bundled stack + runner ON the Jetson (local ROS, no network DDS).
+# platform sim  : Isaac (run_nav_course.py) + the same stack + runner on this desktop.
+#                 The sim rover always drives its wheels through PhysX wheel-floor contact.
+#   calib       : physics-parameter surface (run_baked_rover --calib), combine_mode.
+#   perturb     : multiply physics keys of `calib` (only used by the fake real rover).
+
+real:
+  platform: real
+  note: physical rover, carpet
+
+sim_physics:
+  platform: sim
+  calib: surfaces/carpet_loop.yaml
+  combine_mode: min
+  note: optimizer output - calibrated wheel-contact physics parameters
+
+sim_default:
+  platform: sim
+  note: jetson_rover_v2.usd as authored - the before-optimizer baseline
+
+# --fake-real swaps this in for 'real' so the whole pipeline can be exercised with no
+# rover. It is Isaac driving a DELIBERATELY perturbed copy of the calibrated physics; its
+# numbers are NOT evidence of anything (sessions are prefixed TESTFAKE_).
+fake_real:
+  platform: sim
+  calib: surfaces/carpet_loop.yaml
+  combine_mode: min
+  perturb: {wheel_distance: 1.20, drive_max_force: 0.80, base_angular_damping: 1.5}
+  note: FAKE real rover (Isaac stand-in, perturbed physics parameters)

@@ -57,6 +57,7 @@
 #include <message_filters/synchronizer.h>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -101,6 +102,21 @@ public:
     cam_frame_ = declare_parameter<std::string>("camera_optical_frame",
                                                 "Camera_OmniVision_OV9782_Color");
     use_viewer_ = declare_parameter<bool>("use_viewer", false);
+    // Localization outputs. Two modes:
+    //   * standalone (default): broadcast map->odom TF directly (publish_tf=true), as
+    //     before — ORB-SLAM3 is the sole map->odom source.
+    //   * fused: publish_tf=false + publish_pose=true. ORB-SLAM3 instead emits an
+    //     ABSOLUTE map-frame pose on pose_topic (nav_msgs/Odometry, child=base_frame),
+    //     and a robot_localization EKF fuses it with lidar/wheel odometry to OWN
+    //     map->odom. This keeps the pose alive when visual tracking drops (e.g. in-place
+    //     rotation), where a TF-only ORB-SLAM3 would freeze map->odom. See the launch.
+    publish_tf_ = declare_parameter<bool>("publish_tf", true);
+    publish_pose_ = declare_parameter<bool>("publish_pose", false);
+    pose_topic_ = declare_parameter<std::string>("pose_topic", "/orbslam3/pose");
+    // Diagonal covariance stamped on the published pose (variance: m^2 / rad^2). Modest,
+    // so the EKF corrects visual drift without yanking the estimate on every update.
+    pose_cov_xy_ = declare_parameter<double>("pose_cov_xy", 0.02);
+    pose_cov_yaw_ = declare_parameter<double>("pose_cov_yaw", 0.02);
     // Wide sync queue: Isaac's camera_info/RGB run much faster than the depth frames,
     // so the matching stamp for a depth frame can sit well back in the RGB buffer
     // (same reason nav_depth uses queue_size 30).
@@ -120,6 +136,20 @@ public:
     gen_.min_th_fast = declare_parameter<int>("orb_min_th_fast", 7);
     gen_.out_path = declare_parameter<std::string>("generated_settings_path", "");
 
+    // ── Atlas map persistence (thesis Experiment A: known-map localization) ──────
+    // ORB-SLAM3 loads/saves its multi-map "atlas" via the settings-file keys
+    // System.LoadAtlasFromFile / System.SaveAtlasToFile (base path, no extension; it
+    // reads/writes "<path>.osa"). We inject those into the GENERATED settings so the
+    // default camera_info-driven flow works. localization_mode calls
+    // System::ActivateLocalizationMode() so ORB-SLAM3 stops adding keyframes and only
+    // relocalizes+tracks against the loaded atlas. All default empty/false = the
+    // original live-mapping behavior, so nothing changes unless you opt in.
+    //   mapping run       : save_atlas:=<base>            (writes <base>.osa on exit)
+    //   localization run  : load_atlas:=<base> localization_mode:=true
+    load_atlas_ = declare_parameter<std::string>("load_atlas", "");
+    save_atlas_ = declare_parameter<std::string>("save_atlas", "");
+    localization_mode_ = declare_parameter<bool>("localization_mode", false);
+
     // ── TF ────────────────────────────────────────────────────────────────────
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -134,6 +164,9 @@ public:
     sync_->registerCallback(std::bind(&OrbSlam3RgbdNode::grabRGBD, this, _1, _2));
 
     cloud_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(cloud_topic_, 2);
+    if (publish_pose_) {
+      pose_pub_ = create_publisher<nav_msgs::msg::Odometry>(pose_topic_, 10);
+    }
 
     if (settings_.empty()) {
       // Defer ORB-SLAM3 construction until the intrinsics arrive. Callbacks are
@@ -237,6 +270,12 @@ private:
       << "Viewer.ViewpointY: -0.7\n"
       << "Viewer.ViewpointZ: -1.8\n"
       << "Viewer.ViewpointF: 500.0\n";
+    // Atlas persistence keys (base path, no extension -> ORB-SLAM3 uses "<path>.osa").
+    // Only emitted when opted in; absent by default so the map is built live as before.
+    if (!load_atlas_.empty())
+      f << "\nSystem.LoadAtlasFromFile: \"" << load_atlas_ << "\"\n";
+    if (!save_atlas_.empty())
+      f << "System.SaveAtlasToFile: \"" << save_atlas_ << "\"\n";
     f.close();
 
     RCLCPP_INFO(get_logger(),
@@ -249,9 +288,26 @@ private:
 
   void startSlam(const std::string & settings_file)
   {
-    RCLCPP_INFO(get_logger(), "Loading ORB-SLAM3 vocabulary + settings (RGB-D)...");
+    // Atlas keys live in the settings file. We inject them into the GENERATED settings;
+    // with a hand-passed settings:=<file> you must add System.LoadAtlasFromFile /
+    // SaveAtlasToFile yourself, so warn rather than silently ignore the request.
+    if (!settings_.empty() && (!load_atlas_.empty() || !save_atlas_.empty())) {
+      RCLCPP_WARN(get_logger(),
+                  "load_atlas/save_atlas are only injected into the GENERATED settings "
+                  "(settings:=''). With an explicit settings file, add "
+                  "System.LoadAtlasFromFile / System.SaveAtlasToFile to it yourself.");
+    }
+    RCLCPP_INFO(get_logger(), "Loading ORB-SLAM3 vocabulary + settings (RGB-D)%s...",
+                localization_mode_ ? " [LOCALIZATION MODE]" : "");
     slam_ = std::make_unique<ORB_SLAM3::System>(
         vocab_, settings_file, ORB_SLAM3::System::RGBD, use_viewer_);
+    if (localization_mode_) {
+      // Stop local mapping / loop-closing map growth: pure relocalization + tracking
+      // against the loaded atlas (Experiment A). Takes effect on the next TrackRGBD.
+      slam_->ActivateLocalizationMode();
+      RCLCPP_INFO(get_logger(), "ORB-SLAM3 localization mode ON: relocalizing in the "
+                                "loaded atlas (no new keyframes).");
+    }
     RCLCPP_INFO(get_logger(), "ORB-SLAM3 running. Drive the rover to initialize tracking.");
   }
 
@@ -344,20 +400,53 @@ private:
     }
     Eigen::Matrix4f T_map_odom = anchor_ * T_P_odom;
 
-    geometry_msgs::msg::TransformStamped tf;
-    tf.header.stamp = stamp;
-    tf.header.frame_id = map_frame_;
-    tf.child_frame_id = odom_frame_;
-    tf.transform.translation.x = T_map_odom(0, 3);
-    tf.transform.translation.y = T_map_odom(1, 3);
-    tf.transform.translation.z = T_map_odom(2, 3);
-    Eigen::Quaternionf q(T_map_odom.block<3, 3>(0, 0));
-    q.normalize();
-    tf.transform.rotation.x = q.x();
-    tf.transform.rotation.y = q.y();
-    tf.transform.rotation.z = q.z();
-    tf.transform.rotation.w = q.w();
-    tf_broadcaster_->sendTransform(tf);
+    // Standalone mode: ORB-SLAM3 is the sole map->odom source and broadcasts it.
+    // Fused mode (publish_tf=false): the EKF owns map->odom, so we stay off TF and only
+    // emit the absolute pose below — otherwise two nodes would fight over map->odom.
+    if (publish_tf_) {
+      geometry_msgs::msg::TransformStamped tf;
+      tf.header.stamp = stamp;
+      tf.header.frame_id = map_frame_;
+      tf.child_frame_id = odom_frame_;
+      tf.transform.translation.x = T_map_odom(0, 3);
+      tf.transform.translation.y = T_map_odom(1, 3);
+      tf.transform.translation.z = T_map_odom(2, 3);
+      Eigen::Quaternionf q(T_map_odom.block<3, 3>(0, 0));
+      q.normalize();
+      tf.transform.rotation.x = q.x();
+      tf.transform.rotation.y = q.y();
+      tf.transform.rotation.z = q.z();
+      tf.transform.rotation.w = q.w();
+      tf_broadcaster_->sendTransform(tf);
+    }
+
+    // Absolute base pose in the map frame, for the EKF to fuse (differential=false).
+    // T_map_base = T_map_odom * T_odom_base = anchor * T_P_base.
+    if (publish_pose_ && pose_pub_) {
+      Eigen::Matrix4f T_map_base = anchor_ * T_P_base;
+      nav_msgs::msg::Odometry odom;
+      odom.header.stamp = stamp;
+      odom.header.frame_id = map_frame_;
+      odom.child_frame_id = base_frame_;
+      odom.pose.pose.position.x = T_map_base(0, 3);
+      odom.pose.pose.position.y = T_map_base(1, 3);
+      odom.pose.pose.position.z = T_map_base(2, 3);
+      Eigen::Quaternionf qb(T_map_base.block<3, 3>(0, 0));
+      qb.normalize();
+      odom.pose.pose.orientation.x = qb.x();
+      odom.pose.pose.orientation.y = qb.y();
+      odom.pose.pose.orientation.z = qb.z();
+      odom.pose.pose.orientation.w = qb.w();
+      // Row-major 6x6 pose covariance (x,y,z,roll,pitch,yaw). Only x,y,yaw are used by
+      // the two_d_mode EKF; the unused axes get a large variance so they never pull it.
+      odom.pose.covariance[0]  = pose_cov_xy_;   // x
+      odom.pose.covariance[7]  = pose_cov_xy_;   // y
+      odom.pose.covariance[14] = 1e6;            // z
+      odom.pose.covariance[21] = 1e6;            // roll
+      odom.pose.covariance[28] = 1e6;            // pitch
+      odom.pose.covariance[35] = pose_cov_yaw_;  // yaw
+      pose_pub_->publish(odom);
+    }
   }
 
   void publishMapPoints(const rclcpp::Time & stamp)
@@ -394,11 +483,15 @@ private:
 
   // ── Members ─────────────────────────────────────────────────────────────────
   std::string vocab_, settings_, rgb_topic_, depth_topic_, info_topic_, cloud_topic_;
-  std::string map_frame_, odom_frame_, base_frame_, cam_frame_;
+  std::string map_frame_, odom_frame_, base_frame_, cam_frame_, pose_topic_;
   bool use_viewer_{false};
+  bool publish_tf_{true}, publish_pose_{false};
   int sync_queue_{30};
   double depth_min_{0.1}, depth_max_{10.0};
+  double pose_cov_xy_{0.02}, pose_cov_yaw_{0.02};
   GenSettings gen_{};
+  std::string load_atlas_, save_atlas_;
+  bool localization_mode_{false};
 
   std::unique_ptr<ORB_SLAM3::System> slam_;
 
@@ -406,6 +499,7 @@ private:
   std::shared_ptr<message_filters::Synchronizer<ApproxSync>> sync_;
   rclcpp::Subscription<CameraInfoMsg>::SharedPtr info_sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pose_pub_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

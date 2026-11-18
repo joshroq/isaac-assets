@@ -1,0 +1,1220 @@
+{
+ "default_r0|T1_straight": {
+  "case": "default_r0",
+  "test": "T1_straight",
+  "theta": {},
+  "features": {
+   "v_ss": 0.14919148169841778,
+   "dist": 0.5732112296678845,
+   "tau_v": 0.14583333300000012,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.01121835307209546
+  }
+ },
+ "default_r0|T2_spin": {
+  "case": "default_r0",
+  "test": "T2_spin",
+  "theta": {},
+  "features": {
+   "omega_ss": 0.6474276343467096,
+   "dyaw": 3.8244580526701553,
+   "tau_omega": 0.2041666660000001,
+   "turn_walk": 0.02683693356028698
+  }
+ },
+ "default_r0|T4_arc": {
+  "case": "default_r0",
+  "test": "T4_arc",
+  "theta": {},
+  "features": {
+   "coast_time": 0.20416666699999997,
+   "coast_dist": 0.013453005210262362,
+   "arc_radius": 2.8308877281068647
+  }
+ },
+ "default_r1|T1_straight": {
+  "case": "default_r1",
+  "test": "T1_straight",
+  "theta": {},
+  "features": {
+   "v_ss": 0.14919148169841778,
+   "dist": 0.5732112296678845,
+   "tau_v": 0.14583333300000012,
+   "coast_time": 0.3791666670000007,
+   "coast_dist": 0.04787242659391261
+  }
+ },
+ "default_r1|T2_spin": {
+  "case": "default_r1",
+  "test": "T2_spin",
+  "theta": {},
+  "features": {
+   "omega_ss": 0.6226096199067387,
+   "dyaw": 3.7326134996501468,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0065594089273679265
+  }
+ },
+ "default_r1|T4_arc": {
+  "case": "default_r1",
+  "test": "T4_arc",
+  "theta": {},
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.004919929950680315,
+   "arc_radius": 2.7601295937628305
+  }
+ },
+ "default_r2|T1_straight": {
+  "case": "default_r2",
+  "test": "T1_straight",
+  "theta": {},
+  "features": {
+   "v_ss": 0.1493975142753146,
+   "dist": 0.5833425711807428,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.012215022294166872
+  }
+ },
+ "default_r2|T2_spin": {
+  "case": "default_r2",
+  "test": "T2_spin",
+  "theta": {},
+  "features": {
+   "omega_ss": 0.6474276343467096,
+   "dyaw": 3.8244580526701553,
+   "tau_omega": 0.2041666660000001,
+   "turn_walk": 0.02683693356028698
+  }
+ },
+ "default_r2|T4_arc": {
+  "case": "default_r2",
+  "test": "T4_arc",
+  "theta": {},
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.006156223097161321,
+   "arc_radius": 2.4446468974508297
+  }
+ },
+ "wheel_distance=lo|T1_straight": {
+  "case": "wheel_distance=lo",
+  "test": "T1_straight",
+  "theta": {
+   "wheel_distance": 0.25
+  },
+  "features": {
+   "v_ss": 0.1494205140178803,
+   "dist": 0.5525761959492226,
+   "tau_v": 0.29166666600000024,
+   "coast_time": 0.20416666699999997,
+   "coast_dist": 0.023472976141397383
+  }
+ },
+ "wheel_distance=lo|T2_spin": {
+  "case": "wheel_distance=lo",
+  "test": "T2_spin",
+  "theta": {
+   "wheel_distance": 0.25
+  },
+  "features": {
+   "omega_ss": 0.10247791189292088,
+   "dyaw": 0.8860709117432781,
+   "tau_omega": 0.29166666600000024,
+   "turn_walk": 0.04736165460536191
+  }
+ },
+ "wheel_distance=lo|T4_arc": {
+  "case": "wheel_distance=lo",
+  "test": "T4_arc",
+  "theta": {
+   "wheel_distance": 0.25
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.0083396601470019,
+   "arc_radius": 12.567522628469353
+  }
+ },
+ "wheel_distance=hi|T1_straight": {
+  "case": "wheel_distance=hi",
+  "test": "T1_straight",
+  "theta": {
+   "wheel_distance": 0.9
+  },
+  "features": {
+   "v_ss": 0.14919148169841778,
+   "dist": 0.5732112296678845,
+   "tau_v": 0.14583333300000012,
+   "coast_time": 0.20416666699999997,
+   "coast_dist": 0.02445521290828546
+  }
+ },
+ "wheel_distance=hi|T2_spin": {
+  "case": "wheel_distance=hi",
+  "test": "T2_spin",
+  "theta": {
+   "wheel_distance": 0.9
+  },
+  "features": {
+   "omega_ss": 1.3142697867026656,
+   "dyaw": 9.618118293946047,
+   "tau_omega": 0.29166666600000024,
+   "turn_walk": 0.03384955597492675
+  }
+ },
+ "wheel_distance=hi|T4_arc": {
+  "case": "wheel_distance=hi",
+  "test": "T4_arc",
+  "theta": {
+   "wheel_distance": 0.9
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0030730438841012567,
+   "arc_radius": 0.12851020955926437
+  }
+ },
+ "max_linear_speed=lo|T1_straight": {
+  "case": "max_linear_speed=lo",
+  "test": "T1_straight",
+  "theta": {
+   "max_linear_speed": 0.2
+  },
+  "features": {
+   "v_ss": 0.1493234353590242,
+   "dist": 0.5561980436748502,
+   "tau_v": 0.2625000000000002,
+   "coast_time": 0.2916666670000003,
+   "coast_dist": 0.038505376321636156
+  }
+ },
+ "max_linear_speed=lo|T2_spin": {
+  "case": "max_linear_speed=lo",
+  "test": "T2_spin",
+  "theta": {
+   "max_linear_speed": 0.2
+  },
+  "features": {
+   "omega_ss": 0.40587544855426216,
+   "dyaw": 3.2962283742846767,
+   "tau_omega": 0.29166666600000024,
+   "turn_walk": 0.06588360746006597
+  }
+ },
+ "max_linear_speed=lo|T4_arc": {
+  "case": "max_linear_speed=lo",
+  "test": "T4_arc",
+  "theta": {
+   "max_linear_speed": 0.2
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.008444114326547772,
+   "arc_radius": 2.665656608588227
+  }
+ },
+ "max_linear_speed=hi|T1_straight": {
+  "case": "max_linear_speed=hi",
+  "test": "T1_straight",
+  "theta": {
+   "max_linear_speed": 0.8
+  },
+  "features": {
+   "v_ss": 0.14926872379856104,
+   "dist": 0.5647430930868378,
+   "tau_v": 0.2041666660000001,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.010662133247651733
+  }
+ },
+ "max_linear_speed=hi|T2_spin": {
+  "case": "max_linear_speed=hi",
+  "test": "T2_spin",
+  "theta": {
+   "max_linear_speed": 0.8
+  },
+  "features": {
+   "omega_ss": 0.5635366552929973,
+   "dyaw": 3.3580834466917393,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.03743717270283985
+  }
+ },
+ "max_linear_speed=hi|T4_arc": {
+  "case": "max_linear_speed=hi",
+  "test": "T4_arc",
+  "theta": {
+   "max_linear_speed": 0.8
+  },
+  "features": {
+   "coast_time": 0.20416666699999997,
+   "coast_dist": 0.013453005210262362,
+   "arc_radius": 2.8308877281068647
+  }
+ },
+ "max_angular_speed=lo|T1_straight": {
+  "case": "max_angular_speed=lo",
+  "test": "T1_straight",
+  "theta": {
+   "max_angular_speed": 0.8
+  },
+  "features": {
+   "v_ss": 0.1492089877259861,
+   "dist": 0.569170727061618,
+   "tau_v": 0.17500000000000004,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.012448967249100884
+  }
+ },
+ "max_angular_speed=lo|T2_spin": {
+  "case": "max_angular_speed=lo",
+  "test": "T2_spin",
+  "theta": {
+   "max_angular_speed": 0.8
+  },
+  "features": {
+   "omega_ss": 0.5635366552929973,
+   "dyaw": 3.3580834466917393,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.03743717270283985
+  }
+ },
+ "max_angular_speed=lo|T4_arc": {
+  "case": "max_angular_speed=lo",
+  "test": "T4_arc",
+  "theta": {
+   "max_angular_speed": 0.8
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.004015443352162539,
+   "arc_radius": 2.5746162766678196
+  }
+ },
+ "max_angular_speed=hi|T1_straight": {
+  "case": "max_angular_speed=hi",
+  "test": "T1_straight",
+  "theta": {
+   "max_angular_speed": 3.0
+  },
+  "features": {
+   "v_ss": 0.1494205140178803,
+   "dist": 0.5525761959492226,
+   "tau_v": 0.29166666600000024,
+   "coast_time": 0.2916666670000003,
+   "coast_dist": 0.034546927423029665
+  }
+ },
+ "max_angular_speed=hi|T2_spin": {
+  "case": "max_angular_speed=hi",
+  "test": "T2_spin",
+  "theta": {
+   "max_angular_speed": 3.0
+  },
+  "features": {
+   "omega_ss": 0.6474276343467096,
+   "dyaw": 3.8244580526701553,
+   "tau_omega": 0.2041666660000001,
+   "turn_walk": 0.02683693356028698
+  }
+ },
+ "max_angular_speed=hi|T4_arc": {
+  "case": "max_angular_speed=hi",
+  "test": "T4_arc",
+  "theta": {
+   "max_angular_speed": 3.0
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0035566482846480334,
+   "arc_radius": 2.6999554390374025
+  }
+ },
+ "corner_mu_dynamic=lo|T1_straight": {
+  "case": "corner_mu_dynamic=lo",
+  "test": "T1_straight",
+  "theta": {
+   "corner_mu_dynamic": 0.5
+  },
+  "features": {
+   "v_ss": 0.1491790542158061,
+   "dist": 0.5772272933426864,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.0107711695957308
+  }
+ },
+ "corner_mu_dynamic=lo|T2_spin": {
+  "case": "corner_mu_dynamic=lo",
+  "test": "T2_spin",
+  "theta": {
+   "corner_mu_dynamic": 0.5
+  },
+  "features": {
+   "omega_ss": 0.5646716570891777,
+   "dyaw": 3.5744316901821174,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.044625508216047716
+  }
+ },
+ "corner_mu_dynamic=lo|T4_arc": {
+  "case": "corner_mu_dynamic=lo",
+  "test": "T4_arc",
+  "theta": {
+   "corner_mu_dynamic": 0.5
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0043881564144498215,
+   "arc_radius": 2.504228288953535
+  }
+ },
+ "corner_mu_dynamic=hi|T1_straight": {
+  "case": "corner_mu_dynamic=hi",
+  "test": "T1_straight",
+  "theta": {
+   "corner_mu_dynamic": 1.5
+  },
+  "features": {
+   "v_ss": 0.14925394903931616,
+   "dist": 0.5778681014519067,
+   "tau_v": 0.1166666660000002,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.010635437210925695
+  }
+ },
+ "corner_mu_dynamic=hi|T2_spin": {
+  "case": "corner_mu_dynamic=hi",
+  "test": "T2_spin",
+  "theta": {
+   "corner_mu_dynamic": 1.5
+  },
+  "features": {
+   "omega_ss": 0.6226096199067387,
+   "dyaw": 3.7326134996501468,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0065594089273679265
+  }
+ },
+ "corner_mu_dynamic=hi|T4_arc": {
+  "case": "corner_mu_dynamic=hi",
+  "test": "T4_arc",
+  "theta": {
+   "corner_mu_dynamic": 1.5
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.008444114326547772,
+   "arc_radius": 2.665656608588227
+  }
+ },
+ "corner_mu_static=lo|T1_straight": {
+  "case": "corner_mu_static=lo",
+  "test": "T1_straight",
+  "theta": {
+   "corner_mu_static": 0.5
+  },
+  "features": {
+   "v_ss": 0.1492432169885193,
+   "dist": 0.5824987593220285,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.14583333300000056,
+   "coast_dist": 0.013500538061870663
+  }
+ },
+ "corner_mu_static=lo|T2_spin": {
+  "case": "corner_mu_static=lo",
+  "test": "T2_spin",
+  "theta": {
+   "corner_mu_static": 0.5
+  },
+  "features": {
+   "omega_ss": 0.6406763002241164,
+   "dyaw": 3.6049759397093455,
+   "tau_omega": 0.1166666660000002,
+   "turn_walk": 0.05244557582302919
+  }
+ },
+ "corner_mu_static=lo|T4_arc": {
+  "case": "corner_mu_static=lo",
+  "test": "T4_arc",
+  "theta": {
+   "corner_mu_static": 0.5
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.005306116184582794,
+   "arc_radius": 2.7658399653528383
+  }
+ },
+ "corner_mu_static=hi|T1_straight": {
+  "case": "corner_mu_static=hi",
+  "test": "T1_straight",
+  "theta": {
+   "corner_mu_static": 1.8
+  },
+  "features": {
+   "v_ss": 0.1492089877259861,
+   "dist": 0.569170727061618,
+   "tau_v": 0.17500000000000004,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.012448967249100884
+  }
+ },
+ "corner_mu_static=hi|T2_spin": {
+  "case": "corner_mu_static=hi",
+  "test": "T2_spin",
+  "theta": {
+   "corner_mu_static": 1.8
+  },
+  "features": {
+   "omega_ss": 0.6226096199067387,
+   "dyaw": 3.7326134996501468,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0065594089273679265
+  }
+ },
+ "corner_mu_static=hi|T4_arc": {
+  "case": "corner_mu_static=hi",
+  "test": "T4_arc",
+  "theta": {
+   "corner_mu_static": 1.8
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0024860628023475268,
+   "arc_radius": 2.4135130093197597
+  }
+ },
+ "middle_mu_dynamic=lo|T1_straight": {
+  "case": "middle_mu_dynamic=lo",
+  "test": "T1_straight",
+  "theta": {
+   "middle_mu_dynamic": 0.3
+  },
+  "features": {
+   "v_ss": 0.14924296507517407,
+   "dist": 0.5771793120000744,
+   "tau_v": 0.1166666660000002,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.010862000269375475
+  }
+ },
+ "middle_mu_dynamic=lo|T2_spin": {
+  "case": "middle_mu_dynamic=lo",
+  "test": "T2_spin",
+  "theta": {
+   "middle_mu_dynamic": 0.3
+  },
+  "features": {
+   "omega_ss": 0.34267021232947414,
+   "dyaw": 3.1215958245111732,
+   "tau_omega": 0.14583333300000012,
+   "turn_walk": 0.08223567501600763
+  }
+ },
+ "middle_mu_dynamic=lo|T4_arc": {
+  "case": "middle_mu_dynamic=lo",
+  "test": "T4_arc",
+  "theta": {
+   "middle_mu_dynamic": 0.3
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.004067205536318405,
+   "arc_radius": 2.2357427519751334
+  }
+ },
+ "middle_mu_dynamic=hi|T1_straight": {
+  "case": "middle_mu_dynamic=hi",
+  "test": "T1_straight",
+  "theta": {
+   "middle_mu_dynamic": 1.2
+  },
+  "features": {
+   "v_ss": 0.1490960830270015,
+   "dist": 0.5776422069297813,
+   "tau_v": 0.1166666660000002,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.011048138866473855
+  }
+ },
+ "middle_mu_dynamic=hi|T2_spin": {
+  "case": "middle_mu_dynamic=hi",
+  "test": "T2_spin",
+  "theta": {
+   "middle_mu_dynamic": 1.2
+  },
+  "features": {
+   "omega_ss": 0.48277736213198463,
+   "dyaw": 3.5561495436290134,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.055040816772173776
+  }
+ },
+ "middle_mu_dynamic=hi|T4_arc": {
+  "case": "middle_mu_dynamic=hi",
+  "test": "T4_arc",
+  "theta": {
+   "middle_mu_dynamic": 1.2
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.004070277293346485,
+   "arc_radius": 2.753221694916583
+  }
+ },
+ "middle_mu_static=lo|T1_straight": {
+  "case": "middle_mu_static=lo",
+  "test": "T1_straight",
+  "theta": {
+   "middle_mu_static": 0.3
+  },
+  "features": {
+   "v_ss": 0.14928000150240917,
+   "dist": 0.5819997795790253,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.14583333300000056,
+   "coast_dist": 0.01391643306687379
+  }
+ },
+ "middle_mu_static=lo|T2_spin": {
+  "case": "middle_mu_static=lo",
+  "test": "T2_spin",
+  "theta": {
+   "middle_mu_static": 0.3
+  },
+  "features": {
+   "omega_ss": 0.43255425212719334,
+   "dyaw": 3.4011963662918805,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.02710264248865552
+  }
+ },
+ "middle_mu_static=lo|T4_arc": {
+  "case": "middle_mu_static=lo",
+  "test": "T4_arc",
+  "theta": {
+   "middle_mu_static": 0.3
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0029913641783497176,
+   "arc_radius": 2.833539314899167
+  }
+ },
+ "middle_mu_static=hi|T1_straight": {
+  "case": "middle_mu_static=hi",
+  "test": "T1_straight",
+  "theta": {
+   "middle_mu_static": 1.4
+  },
+  "features": {
+   "v_ss": 0.14936378862573563,
+   "dist": 0.5829976788031851,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.011991627243587885
+  }
+ },
+ "middle_mu_static=hi|T2_spin": {
+  "case": "middle_mu_static=hi",
+  "test": "T2_spin",
+  "theta": {
+   "middle_mu_static": 1.4
+  },
+  "features": {
+   "omega_ss": 0.5245230378601913,
+   "dyaw": 3.595703769602821,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0888823064644653
+  }
+ },
+ "middle_mu_static=hi|T4_arc": {
+  "case": "middle_mu_static=hi",
+  "test": "T4_arc",
+  "theta": {
+   "middle_mu_static": 1.4
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.005260988522478419,
+   "arc_radius": 2.7032480428334615
+  }
+ },
+ "floor_mu_dynamic=lo|T1_straight": {
+  "case": "floor_mu_dynamic=lo",
+  "test": "T1_straight",
+  "theta": {
+   "floor_mu_dynamic": 0.3
+  },
+  "features": {
+   "v_ss": 0.14876719359901816,
+   "dist": 0.5693951126527956,
+   "tau_v": 0.14583333300000012,
+   "coast_time": 0.1750000000000007,
+   "coast_dist": 0.015219616277973908
+  }
+ },
+ "floor_mu_dynamic=lo|T2_spin": {
+  "case": "floor_mu_dynamic=lo",
+  "test": "T2_spin",
+  "theta": {
+   "floor_mu_dynamic": 0.3
+  },
+  "features": {
+   "omega_ss": 0.5054504256831489,
+   "dyaw": 3.549506303282296,
+   "tau_omega": 0.6125000000000003,
+   "turn_walk": 0.02469324070574996
+  }
+ },
+ "floor_mu_dynamic=lo|T4_arc": {
+  "case": "floor_mu_dynamic=lo",
+  "test": "T4_arc",
+  "theta": {
+   "floor_mu_dynamic": 0.3
+  },
+  "features": {
+   "coast_time": 0.05833333400000029,
+   "coast_dist": 0.000974313445424915,
+   "arc_radius": 2.1795190977867724
+  }
+ },
+ "floor_mu_dynamic=hi|T1_straight": {
+  "case": "floor_mu_dynamic=hi",
+  "test": "T1_straight",
+  "theta": {
+   "floor_mu_dynamic": 1.1
+  },
+  "features": {
+   "v_ss": 0.14924118716343193,
+   "dist": 0.5821372447388775,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.14583333300000056,
+   "coast_dist": 0.013788711533281196
+  }
+ },
+ "floor_mu_dynamic=hi|T2_spin": {
+  "case": "floor_mu_dynamic=hi",
+  "test": "T2_spin",
+  "theta": {
+   "floor_mu_dynamic": 1.1
+  },
+  "features": {
+   "omega_ss": 0.3972578623564289,
+   "dyaw": 2.901780692486489,
+   "tau_omega": 0.23333333300000003,
+   "turn_walk": 0.02426362944038995
+  }
+ },
+ "floor_mu_dynamic=hi|T4_arc": {
+  "case": "floor_mu_dynamic=hi",
+  "test": "T4_arc",
+  "theta": {
+   "floor_mu_dynamic": 1.1
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.007307237996978889,
+   "arc_radius": 2.808569769100099
+  }
+ },
+ "floor_mu_static=lo|T1_straight": {
+  "case": "floor_mu_static=lo",
+  "test": "T1_straight",
+  "theta": {
+   "floor_mu_static": 0.3
+  },
+  "features": {
+   "v_ss": 0.14927796140651398,
+   "dist": 0.5827064693870586,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.011329069037805211
+  }
+ },
+ "floor_mu_static=lo|T2_spin": {
+  "case": "floor_mu_static=lo",
+  "test": "T2_spin",
+  "theta": {
+   "floor_mu_static": 0.3
+  },
+  "features": {
+   "omega_ss": 0.6304806131259224,
+   "dyaw": 3.3509172380803243,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.10042123755868317
+  }
+ },
+ "floor_mu_static=lo|T4_arc": {
+  "case": "floor_mu_static=lo",
+  "test": "T4_arc",
+  "theta": {
+   "floor_mu_static": 0.3
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.004195853539078043,
+   "arc_radius": 2.8924090572731322
+  }
+ },
+ "floor_mu_static=hi|T1_straight": {
+  "case": "floor_mu_static=hi",
+  "test": "T1_straight",
+  "theta": {
+   "floor_mu_static": 1.3
+  },
+  "features": {
+   "v_ss": 0.14933112978846347,
+   "dist": 0.5693420855977318,
+   "tau_v": 0.17500000000000004,
+   "coast_time": 0.14583333300000056,
+   "coast_dist": 0.013604660112883901
+  }
+ },
+ "floor_mu_static=hi|T2_spin": {
+  "case": "floor_mu_static=hi",
+  "test": "T2_spin",
+  "theta": {
+   "floor_mu_static": 1.3
+  },
+  "features": {
+   "omega_ss": 0.4299395232357438,
+   "dyaw": 3.2865069161890643,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.06364601480344118
+  }
+ },
+ "floor_mu_static=hi|T4_arc": {
+  "case": "floor_mu_static=hi",
+  "test": "T4_arc",
+  "theta": {
+   "floor_mu_static": 1.3
+  },
+  "features": {
+   "coast_time": 0.2625000000000002,
+   "coast_dist": 0.019650773404934437,
+   "arc_radius": 1.9429794795980224
+  }
+ },
+ "drive_damping=lo|T1_straight": {
+  "case": "drive_damping=lo",
+  "test": "T1_straight",
+  "theta": {
+   "drive_damping": 50.0
+  },
+  "features": {
+   "v_ss": 0.1492897146509983,
+   "dist": 0.5865311863116351,
+   "tau_v": 0.05833333300000021,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.010526061362205224
+  }
+ },
+ "drive_damping=lo|T2_spin": {
+  "case": "drive_damping=lo",
+  "test": "T2_spin",
+  "theta": {
+   "drive_damping": 50.0
+  },
+  "features": {
+   "omega_ss": 0.38863169543202314,
+   "dyaw": 3.2067519027813485,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.07287069668469316
+  }
+ },
+ "drive_damping=lo|T4_arc": {
+  "case": "drive_damping=lo",
+  "test": "T4_arc",
+  "theta": {
+   "drive_damping": 50.0
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0037812044466073004,
+   "arc_radius": 2.6363584550862442
+  }
+ },
+ "drive_damping=hi|T1_straight": {
+  "case": "drive_damping=hi",
+  "test": "T1_straight",
+  "theta": {
+   "drive_damping": 20000.0
+  },
+  "features": {
+   "v_ss": 0.14920848391632355,
+   "dist": 0.5819555052581209,
+   "tau_v": 0.08749999999999991,
+   "coast_time": 0.11666666599999953,
+   "coast_dist": 0.010859373468452381
+  }
+ },
+ "drive_damping=hi|T2_spin": {
+  "case": "drive_damping=hi",
+  "test": "T2_spin",
+  "theta": {
+   "drive_damping": 20000.0
+  },
+  "features": {
+   "omega_ss": 0.48351761229579643,
+   "dyaw": 3.488817644785896,
+   "tau_omega": 0.23333333300000003,
+   "turn_walk": 0.018754712031146197
+  }
+ },
+ "drive_damping=hi|T4_arc": {
+  "case": "drive_damping=hi",
+  "test": "T4_arc",
+  "theta": {
+   "drive_damping": 20000.0
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0019279790888182217,
+   "arc_radius": 2.8528574975730443
+  }
+ },
+ "drive_max_force=lo|T1_straight": {
+  "case": "drive_max_force=lo",
+  "test": "T1_straight",
+  "theta": {
+   "drive_max_force": 0.3
+  },
+  "features": {
+   "v_ss": 0.14910323551183335,
+   "dist": 0.5773315859599774,
+   "tau_v": 0.1166666660000002,
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.006773043528864787
+  }
+ },
+ "drive_max_force=lo|T2_spin": {
+  "case": "drive_max_force=lo",
+  "test": "T2_spin",
+  "theta": {
+   "drive_max_force": 0.3
+  },
+  "features": {
+   "omega_ss": 0.1862020543367954,
+   "dyaw": 1.6289369124925226,
+   "tau_omega": 0.14583333300000012,
+   "turn_walk": 0.041139459612263396
+  }
+ },
+ "drive_max_force=lo|T4_arc": {
+  "case": "drive_max_force=lo",
+  "test": "T4_arc",
+  "theta": {
+   "drive_max_force": 0.3
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.009050853652570402,
+   "arc_radius": 6.412732467012185
+  }
+ },
+ "drive_max_force=hi|T1_straight": {
+  "case": "drive_max_force=hi",
+  "test": "T1_straight",
+  "theta": {
+   "drive_max_force": 50.0
+  },
+  "features": {
+   "v_ss": 0.14919148169841778,
+   "dist": 0.5732112296678845,
+   "tau_v": 0.14583333300000012,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.01121835307209546
+  }
+ },
+ "drive_max_force=hi|T2_spin": {
+  "case": "drive_max_force=hi",
+  "test": "T2_spin",
+  "theta": {
+   "drive_max_force": 50.0
+  },
+  "features": {
+   "omega_ss": 0.6226096199067387,
+   "dyaw": 3.7326134996501468,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0065594089273679265
+  }
+ },
+ "drive_max_force=hi|T4_arc": {
+  "case": "drive_max_force=hi",
+  "test": "T4_arc",
+  "theta": {
+   "drive_max_force": 50.0
+  },
+  "features": {
+   "coast_time": 0.08750000000000036,
+   "coast_dist": 0.0024860628023475268,
+   "arc_radius": 2.4135130093197597
+  }
+ },
+ "base_linear_damping=lo|T1_straight": {
+  "case": "base_linear_damping=lo",
+  "test": "T1_straight",
+  "theta": {
+   "base_linear_damping": 0.0
+  },
+  "features": {
+   "v_ss": 0.1493975142753146,
+   "dist": 0.5833425711807428,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.012215022294166872
+  }
+ },
+ "base_linear_damping=lo|T2_spin": {
+  "case": "base_linear_damping=lo",
+  "test": "T2_spin",
+  "theta": {
+   "base_linear_damping": 0.0
+  },
+  "features": {
+   "omega_ss": 0.6226096199067387,
+   "dyaw": 3.7326134996501468,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0065594089273679265
+  }
+ },
+ "base_linear_damping=lo|T4_arc": {
+  "case": "base_linear_damping=lo",
+  "test": "T4_arc",
+  "theta": {
+   "base_linear_damping": 0.0
+  },
+  "features": {
+   "coast_time": 0.14583333400000065,
+   "coast_dist": 0.012431115227590389,
+   "arc_radius": 2.665656608588227
+  }
+ },
+ "base_linear_damping=hi|T1_straight": {
+  "case": "base_linear_damping=hi",
+  "test": "T1_straight",
+  "theta": {
+   "base_linear_damping": 8.0
+  },
+  "features": {
+   "v_ss": 0.14925394903931616,
+   "dist": 0.5778681014519067,
+   "tau_v": 0.1166666660000002,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.010635437210925695
+  }
+ },
+ "base_linear_damping=hi|T2_spin": {
+  "case": "base_linear_damping=hi",
+  "test": "T2_spin",
+  "theta": {
+   "base_linear_damping": 8.0
+  },
+  "features": {
+   "omega_ss": 0.6226096199067387,
+   "dyaw": 3.7326134996501468,
+   "tau_omega": 0.08750000000000013,
+   "turn_walk": 0.0065594089273679265
+  }
+ },
+ "base_linear_damping=hi|T4_arc": {
+  "case": "base_linear_damping=hi",
+  "test": "T4_arc",
+  "theta": {
+   "base_linear_damping": 8.0
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.00617655028468815,
+   "arc_radius": 2.8308877281068647
+  }
+ },
+ "base_angular_damping=lo|T1_straight": {
+  "case": "base_angular_damping=lo",
+  "test": "T1_straight",
+  "theta": {
+   "base_angular_damping": 0.0
+  },
+  "features": {
+   "v_ss": 0.1493975142753146,
+   "dist": 0.5833425711807428,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.012215022294166872
+  }
+ },
+ "base_angular_damping=lo|T2_spin": {
+  "case": "base_angular_damping=lo",
+  "test": "T2_spin",
+  "theta": {
+   "base_angular_damping": 0.0
+  },
+  "features": {
+   "omega_ss": 0.41174206638337024,
+   "dyaw": 3.154766861383481,
+   "tau_omega": 0.14583333300000012,
+   "turn_walk": 0.01813675550626108
+  }
+ },
+ "base_angular_damping=lo|T4_arc": {
+  "case": "base_angular_damping=lo",
+  "test": "T4_arc",
+  "theta": {
+   "base_angular_damping": 0.0
+  },
+  "features": {
+   "coast_time": 0.14583333400000065,
+   "coast_dist": 0.012431115227590389,
+   "arc_radius": 2.665656608588227
+  }
+ },
+ "base_angular_damping=hi|T1_straight": {
+  "case": "base_angular_damping=hi",
+  "test": "T1_straight",
+  "theta": {
+   "base_angular_damping": 8.0
+  },
+  "features": {
+   "v_ss": 0.1493975142753146,
+   "dist": 0.5833425711807428,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.012215022294166872
+  }
+ },
+ "base_angular_damping=hi|T2_spin": {
+  "case": "base_angular_damping=hi",
+  "test": "T2_spin",
+  "theta": {
+   "base_angular_damping": 8.0
+  },
+  "features": {
+   "omega_ss": 0.44696835918613614,
+   "dyaw": 3.368886570862443,
+   "tau_omega": 0.17500000000000004,
+   "turn_walk": 0.06615893402962818
+  }
+ },
+ "base_angular_damping=hi|T4_arc": {
+  "case": "base_angular_damping=hi",
+  "test": "T4_arc",
+  "theta": {
+   "base_angular_damping": 8.0
+  },
+  "features": {
+   "coast_time": 0.1166666670000005,
+   "coast_dist": 0.007410758802118209,
+   "arc_radius": 2.8308877281068647
+  }
+ },
+ "drive_max_force=0.05|T1_straight": {
+  "case": "drive_max_force=0.05",
+  "test": "T1_straight",
+  "theta": {
+   "drive_max_force": 0.05
+  },
+  "features": {
+   "v_ss": 0.14914360360645915,
+   "dist": 0.5706084997900973,
+   "tau_v": 0.17500000000000004,
+   "coast_time": 0.20416666699999997,
+   "coast_dist": 0.018174411178316537
+  }
+ },
+ "drive_max_force=0.05|T2_spin": {
+  "case": "drive_max_force=0.05",
+  "test": "T2_spin",
+  "theta": {
+   "drive_max_force": 0.05
+  },
+  "features": {
+   "omega_ss": 0.0,
+   "dyaw": 0.0,
+   "tau_omega": 0.001,
+   "turn_walk": 4.018251102844308e-07
+  }
+ },
+ "drive_max_force=0.02|T1_straight": {
+  "case": "drive_max_force=0.02",
+  "test": "T1_straight",
+  "theta": {
+   "drive_max_force": 0.02
+  },
+  "features": {
+   "v_ss": 4.926247485855851e-05,
+   "dist": 0.0003819671381660404,
+   "tau_v": 0.05833333300000021,
+   "coast_time": 0.0,
+   "coast_dist": 3.721943741709108e-05
+  }
+ },
+ "drive_max_force=0.02|T2_spin": {
+  "case": "drive_max_force=0.02",
+  "test": "T2_spin",
+  "theta": {
+   "drive_max_force": 0.02
+  },
+  "features": {
+   "omega_ss": 0.0,
+   "dyaw": 0.0,
+   "tau_omega": 0.001,
+   "turn_walk": 8.389543875152027e-09
+  }
+ },
+ "drive_damping=0.5|T1_straight": {
+  "case": "drive_damping=0.5",
+  "test": "T1_straight",
+  "theta": {
+   "drive_damping": 0.5
+  },
+  "features": {
+   "v_ss": 0.1491947377254457,
+   "dist": 0.5817510246976979,
+   "tau_v": 0.08750000000000013,
+   "coast_time": 0.14583333300000056,
+   "coast_dist": 0.014124672186782771
+  }
+ },
+ "drive_damping=0.5|T2_spin": {
+  "case": "drive_damping=0.5",
+  "test": "T2_spin",
+  "theta": {
+   "drive_damping": 0.5
+  },
+  "features": {
+   "omega_ss": 0.5027435629285347,
+   "dyaw": 3.3841936276124676,
+   "tau_omega": 0.29166666600000024,
+   "turn_walk": 0.049999585392810734
+  }
+ },
+ "default|T5_stop": {
+  "case": "default",
+  "test": "T5_stop",
+  "theta": {},
+  "features": {
+   "v_ss": 0.1985399629250444,
+   "dist": 0.5340325475737543,
+   "tau_v": 0.29166666600000024,
+   "coast_time": 0.14583333399999976,
+   "coast_dist": 0.017844640305083717
+  }
+ },
+ "default|T3_speed_sweep": {
+  "case": "default",
+  "test": "T3_speed_sweep",
+  "theta": {},
+  "features": {
+   "v_ss": 0.04962789207039012,
+   "dist": 0.05342006011915443,
+   "tau_v": 0.1166666660000002,
+   "coast_time": 0.11666666699999961,
+   "coast_dist": 0.015348922143544698
+  }
+ }
+}

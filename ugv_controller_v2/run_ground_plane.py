@@ -37,6 +37,17 @@ def _parse_args() -> argparse.Namespace:
             "performance/debug sessions."
         ),
     )
+    parser.add_argument(
+        "--calib", default=None,
+        help="sim->real calibration YAML (sim_calibration.yaml shape) applied IN-MEMORY "
+             "before play (shared USD untouched). Used by the sim2real optimiser per trial.",
+    )
+    parser.add_argument(
+        "--combine-mode", "--combine_mode", dest="combine_mode", default=None,
+        choices=["min", "average", "multiply"],
+        help="frictionCombineMode to author on the wheel+floor materials ('min' makes the "
+             "floor material the effective per-surface friction knob).",
+    )
     return parser.parse_args()
 
 
@@ -47,5 +58,7 @@ if __name__ == "__main__":
             environment_usd=None,
             headless=args.headless,
             camera_topics=args.camera_topics,
+            calibration=args.calib,
+            friction_combine_mode=args.combine_mode,
         )
     )

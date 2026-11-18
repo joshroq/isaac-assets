@@ -1,0 +1,16 @@
+# Goal points for the thesis navigation experiments (map frame, metres).
+#
+# The SAME goals are used for the Isaac sim (warehouse_basic_obstacles.usd) and the
+# real rover, so runs are directly comparable. IMPORTANT for repeatability: start the
+# rover from the SAME pose every run (the SLAM map origin), so these map-frame goals
+# line up with the warehouse the same way each time. Rename the labels to whatever
+# reads well in the paper.
+goals:
+  1: {name: "G1_south",     x: 1.5,  y: -11.55}   # nudged from y=-11.0 (was ON an obstacle/OCC) to nearest clear free cell
+  2: {name: "G2_northwest", x: -6.5, y: 15.0}
+  3: {name: "G3_east",      x: 8.5,  y: 6.0}
+  4: {name: "G4_center",    x: 5.0,  y: 0.5}
+
+# Goal acceptance: a trial counts as reached when Nav2 reports SUCCEEDED. The runner
+# also records the final Euclidean error to the goal so you can apply a stricter
+# threshold in analysis if you want.

@@ -1,0 +1,117 @@
+### robot_localization GLOBAL EKF for nav_orbslam3 (v2) — publishes map->odom ###
+#
+# This is the "co-equal" lidar+visual localization fusion for nav_orbslam3. Unlike the
+# real rover's ekf.yaml (a LOCAL odom-frame EKF fusing wheel+IMU -> odom->base), Isaac
+# already owns odom->base here, so this instance runs in the MAP frame and fuses:
+#
+#   odom0 = /ugv_sim/odom       (Isaac wheel odometry) -> velocities only
+#   odom1 = /orbslam3/lidar_odom (rf2o laser odometry) -> velocities only  [rotation-robust]
+#   odom2 = /orbslam3/pose       (ORB-SLAM3 absolute)  -> x,y,yaw pose, differential=false
+#
+# The two velocity sources propagate map->base continuously (rf2o keeps the estimate alive
+# during pure in-place rotation, where ORB-SLAM3 loses tracking and stops publishing), and
+# the ORB-SLAM3 absolute pose corrects long-term drift. The EKF is the SOLE map->odom
+# broadcaster (map->base minus Isaac's odom->base), so the ORB-SLAM3 bridge runs with
+# publish_tf:=false to avoid fighting it. Wheel/rf2o POSES are in the odom frame, so only
+# their velocities are fused here — never their pose (that would be the wrong frame).
+#
+# Only x, y, yaw and their rates matter (two_d_mode); z/roll/pitch are ignored.
+
+ekf_filter_node:
+    ros__parameters:
+
+        use_sim_time: true
+        frequency: 30.0
+        sensor_timeout: 0.2
+        two_d_mode: true
+        transform_time_offset: 0.0
+        transform_timeout: 0.0
+        print_diagnostics: true
+        publish_tf: true
+        publish_acceleration: false
+        reset_on_time_jump: true
+
+        # World-fixed MAP frame: this EKF's output transform is map->odom.
+        map_frame: map
+        odom_frame: odom
+        base_link_frame: base_footprint
+        world_frame: map
+
+        # ── odom0: Isaac wheel odometry (continuous backbone, velocities only) ──────
+        odom0: /ugv_sim/odom
+        odom0_config: [false, false, false,
+                       false, false, false,
+                       true,  false, false,
+                       false, false, true,
+                       false, false, false]
+        odom0_queue_size: 10
+        odom0_nodelay: true
+        odom0_differential: false
+        odom0_relative: false
+        odom0_twist_rejection_threshold: 2.0
+
+        # ── odom1: rf2o laser odometry (rotation-robust, velocities only) ───────────
+        odom1: /orbslam3/lidar_odom
+        odom1_config: [false, false, false,
+                       false, false, false,
+                       true,  false, false,
+                       false, false, true,
+                       false, false, false]
+        odom1_queue_size: 10
+        odom1_nodelay: true
+        odom1_differential: false
+        odom1_relative: false
+        odom1_twist_rejection_threshold: 2.0
+
+        # ── odom2: ORB-SLAM3 absolute pose in map (drift correction) ────────────────
+        # Absolute x, y, yaw. differential=false: it is already a global map-frame pose.
+        # When visual tracking drops the bridge stops publishing, and the filter simply
+        # coasts on odom0/odom1 until it recovers.
+        odom2: /orbslam3/pose
+        odom2_config: [true,  true,  false,
+                       false, false, true,
+                       false, false, false,
+                       false, false, false,
+                       false, false, false]
+        odom2_queue_size: 10
+        odom2_nodelay: true
+        odom2_differential: false
+        odom2_relative: false
+        # ORB-SLAM3 emits large discontinuous pose jumps on every active-map reset /
+        # relocalization (hundreds per run in this scene). At 20.0 the filter accepted
+        # jumps up to 20 m, yanking map->odom and sending Nav2 chasing a phantom pose
+        # (the cold-start wandering). Tighten to reject post-reset teleports while still
+        # admitting genuine drift corrections (the sweep keeps real steps well under 5 m).
+        odom2_pose_rejection_threshold: 5.0
+
+        process_noise_covariance: [0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.06, 0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.03, 0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.03, 0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.06, 0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.025, 0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.025, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.04, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.02, 0.0,  0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,
+                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,   0.0,   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.015]
+
+        initial_estimate_covariance: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-9, 0.0, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-9, 0.0,
+                                      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1e-9]

@@ -1,0 +1,21 @@
+name: R2_spin_rates
+# In-place spins at the rotation-shim (0.8), recovery (0.4-1.0) and teleop (0.5) rates, both directions.
+# Response-map battery (Nav2 TEB/rotation-shim + keyboard teleop envelope: |v| <= 0.26 m/s, |w| <= 1.0 rad/s). 17 steps, 28.4 s.
+steps:
+  - {linear: +0.00, angular: +0.00, duration: 1.0}
+  - {linear: +0.00, angular: +0.40, duration: 3.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: -0.40, duration: 3.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: +0.50, duration: 3.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: -0.50, duration: 3.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: +0.80, duration: 2.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: -0.80, duration: 2.5}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: +1.00, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}
+  - {linear: +0.00, angular: -1.00, duration: 2.0}
+  - {linear: +0.00, angular: +0.00, duration: 0.8}

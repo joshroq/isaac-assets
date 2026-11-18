@@ -10,6 +10,33 @@ for the Waveshare Jetson UGV rover.
 - `ugv_controller_v2/` - Isaac-side launchers and navigation-system launch files.
 - `ugv_ws/src/` - Waveshare ROS 2 packages used by the real rover and Nav2.
 - `jetson_rover_setup/` - files to install on the physical Jetson rover.
+- [`sim2real_system/`](sim2real_system/README.md) - complete browsable snapshot of the
+  camera, rover link, calibration, physics optimiser, simulation, and navigation
+  comparison, arranged in execution order.
+- [`sim2real_calib/`](sim2real_calib/README.md) - original runtime source layout for
+  calibration and sim-to-real experiments.
+- [`experiments/`](experiments/README.md) - navigation experiments and replay tools.
+
+## Sim-to-real source and results
+
+`sim2real_system/` contains independent copies of the source, configuration, rover
+USD, saved stations, tests, and a held-out verification report. It is a source
+snapshot for browsing and sharing; run the system from the original repository
+layout in `sim2real_calib/` and `ugv_controller_v2/`, following the
+[runbook](sim2real_calib/docs/RUNBOOK.md).
+
+After editing the original sources, refresh the snapshot with:
+
+```bash
+python3 sim2real_system/make_links.py
+```
+
+Generated trial directories, recordings, caches, build outputs, and large
+RTAB-Map databases are excluded from Git. The local
+[`sim2real_calib/RESULTS.md`](sim2real_calib/RESULTS.md) catalog references local run
+data; those run links require the original results directories. The copied
+[held-out report](sim2real_system/10_verification_and_report/report.md) is included
+in Git.
 
 ## Sim + Real Command Contract
 
@@ -44,4 +71,3 @@ sudo systemctl enable --now ugv-bringup.service
 On the Isaac/laptop side, source the matching environment from
 `jetson_rover_setup/env/ros2_rover.env`, start Isaac, then run one of the
 navigation systems from `ugv_controller_v2/nav_systems/`.
-

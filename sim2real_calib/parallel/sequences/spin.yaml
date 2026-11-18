@@ -1,0 +1,5 @@
+name: spin
+steps:
+  - {linear: 0.0, angular: 0.0, duration: 1.0}
+  - {linear: 0.0, angular: 0.5, duration: 4.0}
+  - {linear: 0.0, angular: 0.0, duration: 1.5}
