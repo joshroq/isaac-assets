@@ -23,44 +23,50 @@ sys.path.insert(0, str(SC / "optimize"))
 GAP_S = 1.5          # extra zero-command time between tests (sequences already end idle)
 
 
+# Join every test's command steps into one sequence with a GAP_S idle step after each;
+# returns (all steps, [(test name, start time, end time)]).
 def concat(plan):
     """plan: {name: steps}. Returns (steps, [(name, t_start, t_end)])."""
-    steps, spans, t = [], [], 0.0
-    for name, seq in plan.items():
-        dur = sum(float(s["duration"]) for s in seq)
-        spans.append((name, t, t + dur))
-        steps.extend(dict(s) for s in seq)
+    steps, test_spans, elapsed_s = [], [], 0.0
+    for name, test_steps in plan.items():
+        test_duration = sum(float(step["duration"]) for step in test_steps)
+        test_spans.append((name, elapsed_s, elapsed_s + test_duration))
+        steps.extend(dict(step) for step in test_steps)
         steps.append({"linear": 0.0, "angular": 0.0, "duration": GAP_S})
-        t += dur + GAP_S
-    return steps, spans
+        elapsed_s += test_duration + GAP_S
+    return steps, test_spans
 
 
+# Cut the battery's (t, x, y, yaw) track CSV back into one CSV per test, each re-timed
+# so the test starts at t = 0. Returns {test name: csv path}.
 def split(csv_path, spans, outdir):
-    rows = []
-    with open(csv_path) as f:
-        for r in csv.DictReader(f):
-            rows.append((float(r["t"]), float(r["x"]), float(r["y"]), float(r["yaw"])))
-    out = {}
-    for name, t0, t1 in spans:
-        path = Path(outdir) / f"{name}.csv"
-        with open(path, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(("t", "x", "y", "yaw"))
-            for t, x, y, yaw in rows:
-                if t0 - 1e-6 <= t <= t1 + 1e-6:
-                    w.writerow((f"{t - t0:.4f}", x, y, yaw))
-        out[name] = str(path)
-    return out
+    track_rows = []
+    with open(csv_path) as csv_file:
+        for row in csv.DictReader(csv_file):
+            track_rows.append((float(row["t"]), float(row["x"]), float(row["y"]), float(row["yaw"])))
+    test_csvs = {}
+    for name, test_start, test_end in spans:
+        test_csv = Path(outdir) / f"{name}.csv"
+        with open(test_csv, "w", newline="") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(("t", "x", "y", "yaw"))
+            for time_s, x, y, yaw in track_rows:
+                if test_start - 1e-6 <= time_s <= test_end + 1e-6:
+                    writer.writerow((f"{time_s - test_start:.4f}", x, y, yaw))
+        test_csvs[name] = str(test_csv)
+    return test_csvs
 
 
+# One Isaac launch for the whole battery: concat -> sim_eval.run_trial -> split.
+# The timeout allows 240 s of start-up plus 3x the sequence time.
 def run_battery(theta, plan, workdir, combine_mode="min", timeout=None):
     """Run every sequence in `plan` under `theta` in one Isaac launch -> {name: csv}."""
     import sim_eval
     workdir = Path(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    steps, spans = concat(plan)
-    total = sum(s["duration"] for s in steps)
-    timeout = timeout or 240.0 + 3.0 * total      # startup + (possibly slow) sim time
-    full = sim_eval.run_trial(theta, steps, surface="battery", combine_mode=combine_mode,
+    steps, test_spans = concat(plan)
+    total_duration = sum(step["duration"] for step in steps)
+    timeout = timeout or 240.0 + 3.0 * total_duration      # startup + (possibly slow) sim time
+    battery_csv = sim_eval.run_trial(theta, steps, surface="battery", combine_mode=combine_mode,
                               workdir=str(workdir), startup_timeout=timeout)
-    return split(full, spans, workdir)
+    return split(battery_csv, test_spans, workdir)

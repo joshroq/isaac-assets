@@ -44,52 +44,60 @@ REFERENCE_GEOMETRY = [
 ]
 
 
+# Compact number text: '-' for None/NaN, 3 significant digits for very large/small
+# values, 1 decimal from 100 up, otherwise 4 significant digits.
 def fmt(v):
     if isinstance(v, str):
         return v
     if v is None or v != v:
         return "-"
-    a = abs(v)
-    if a >= 1e5 or (0 < a < 1e-3):
+    magnitude = abs(v)
+    if magnitude >= 1e5 or (0 < magnitude < 1e-3):
         return f"{v:.3g}"
-    if a >= 100:
+    if magnitude >= 100:
         return f"{v:.1f}"
     return f"{v:.4g}"
 
 
+# Schema default value of a parameter (calib_params.SCHEMA_BY_KEY).
 def _schema_default(key):
     return C.SCHEMA_BY_KEY[key]["default"]
 
 
+# One sheet row for a parameter: value (theta, else schema default), unit, bounds for
+# this surface, scale, class (calibrated / measured / locked), note, plus any extras
+# (start / best / candidate / trust / history for fitted keys).
 def row(key, theta, surface=None, **extra):
-    s = C.SCHEMA_BY_KEY[key]
+    schema = C.SCHEMA_BY_KEY[key]
     value = theta.get(key, _schema_default(key))
     try:
-        lo, hi = C.bounds(key, surface) if s["lo"] is not None else (None, None)
+        low, high = C.bounds(key, surface) if schema["lo"] is not None else (None, None)
     except Exception:
-        lo, hi = s["lo"], s["hi"]
-    r = dict(key=key, value=value, unit=UNITS.get(key, ""), lo=lo, hi=hi,
-             scale=s.get("scale", "lin"), cls=C.classify(key), note=s.get("note", ""))
+        low, high = schema["lo"], schema["hi"]
+    sheet_row = dict(key=key, value=value, unit=UNITS.get(key, ""), lo=low, hi=high,
+             scale=schema.get("scale", "lin"), cls=C.classify(key), note=schema.get("note", ""))
     if key == "wheel_distance":
-        r["derived"] = f"D/B = {value / TRACK_PHYS:.2f} x physical track {TRACK_PHYS} m"
-    r.update(extra)
-    return r
+        sheet_row["derived"] = f"D/B = {value / TRACK_PHYS:.2f} x physical track {TRACK_PHYS} m"
+    sheet_row.update(extra)
+    return sheet_row
 
 
+# The dashboard's parameter sheet: rows of the keys being fitted, then groups of
+# held calibrated keys, measured masses and locked geometry (with reference values).
 def build(theta, changing_keys=(), surface=None, start=None, best=None, cand=None,
           trust=None, history=None, header=""):
     """-> sheet dict for Dashboard.params()."""
     changing = []
-    for k in changing_keys:
-        changing.append(row(k, theta, surface,
-                            start=(start or {}).get(k), best=(best or {}).get(k),
-                            cand=(cand or {}).get(k), trust=(trust or {}).get(k),
-                            history=list((history or {}).get(k, []))))
-    held = [row(k, theta, surface) for k in C.OPTIMISABLE if k not in changing_keys]
-    measured = [row(k, theta, surface) for k in C.MEASURED]
-    geometry = [row(k, theta, surface) for k in C.LOCKED]
-    geometry += [dict(key=name, value=v, unit=u, note=n, cls="reference")
-                 for name, v, u, n in REFERENCE_GEOMETRY]
+    for key in changing_keys:
+        changing.append(row(key, theta, surface,
+                            start=(start or {}).get(key), best=(best or {}).get(key),
+                            cand=(cand or {}).get(key), trust=(trust or {}).get(key),
+                            history=list((history or {}).get(key, []))))
+    held = [row(key, theta, surface) for key in C.OPTIMISABLE if key not in changing_keys]
+    measured = [row(key, theta, surface) for key in C.MEASURED]
+    geometry = [row(key, theta, surface) for key in C.LOCKED]
+    geometry += [dict(key=name, value=value, unit=unit, note=note, cls="reference")
+                 for name, value, unit, note in REFERENCE_GEOMETRY]
     held_title = ("Calibrated, held at current value this session" if changing_keys
                   else "Sim parameters (fixed for this run)")
     groups = [(held_title, held), ("Measured (weighed per rover)", measured),

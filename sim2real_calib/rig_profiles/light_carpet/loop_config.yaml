@@ -1,0 +1,133 @@
+# Closed sim2real loop configuration (grid metres; origin = the grid's (0,0) corner,
+# +x along the bottom edge, +y up the image; yaw in DEGREES, 0 = facing +x, CCW +).
+# Everything here refers to the rover CHASSIS CENTRE as tracked by the sticker triangle.
+
+# The rover centre must stay inside this box. A trial that leaves it is aborted
+# (rover stopped) and homing refuses to drive outside it. PADDED 2026-11-18: the 1 m grid
+# sits in the bottom-right corner of the foam mats (mat edges at x ~ +1.15, y ~ -0.14), so
+# the fence keeps the whole chassis on foam; concrete-era recorded excursions were
+# x 0.23-0.86, y 0.08-1.00. (concrete fence: x [-0.15, 1.15], y [-0.15, 1.05])
+workspace:
+  x: [-0.15, 1.15]
+  y: [0.00, 1.30]
+
+# Return-to-start ("homing") controller - closed loop on the overhead camera pose.
+homing:
+  pos_tol_m: 0.035         # done when within this distance ...
+  yaw_tol_deg: 4.0         # ... and this heading error
+  max_linear: 0.12         # m/s command caps while homing
+  max_angular: 0.9         # rad/s (carpet preset)
+  min_linear: 0.06         # carpet deadband: smaller commands don't move the rover
+  min_angular: 0.45        # carpet preset; homing raises it if the rover stalls
+  k_linear: 0.8            # m/s per m of distance
+  k_angular: 1.2           # rad/s per rad of heading error
+  latency_s: 0.70          # raw-camera lag (measured 0.71 s); used only if fusion is off
+  run_in_m: 0.15           # final straight approach length (pre-goal behind the goal)
+  turn_in_place_deg: 30    # rotate in place first if the goal bearing is off by more
+  reverse_within_m: 0.25   # goal behind and this close -> back up instead of a U-turn
+  settle_s: 0.6            # stop + re-measure before declaring success
+  lost_timeout_s: 3.0      # camera lost this long -> stop and give up
+  timeout_s: 90.0          # whole homing attempt
+  attempts: 3              # re-tries of the full go-to-pose before failing the trial
+
+# Start pose per test (sequence stem), chosen so each maneuver's real AND sim
+# footprint stays inside the workspace above.
+start_poses:
+  # PADDED 2026-11-18: every y shifted +0.15 m vs concrete (T1 was y 0.15) - homing pre-goals
+  # at y ~ 0 put the rear wheels on the foam edge (y ~ -0.14) and kicked the heading 30-40 deg.
+  T1_straight:    {x: 0.50, y: 0.30, yaw: 90}    # ~0.6 m straight up the grid
+  T2_spin:        {x: 0.50, y: 0.65, yaw: 90}    # in place, grid centre
+  T3_speed_sweep: {x: 0.50, y: 0.25, yaw: 90}    # ~0.6 m
+  T3b_top_speed:  {x: 0.50, y: 0.50, yaw: 90}    # out-and-back bursts (+/- 0.5 m)
+  T4_arc:         {x: 0.25, y: 0.30, yaw: 0}     # left arc toward the grid centre
+  T5_stop:        {x: 0.50, y: 0.25, yaw: 90}    # 0.6 m + coast
+  T6_spin_sweep:  {x: 0.50, y: 0.65, yaw: 90}    # in place
+  # Response-map battery (Nav2/teleop command envelope). Each sequence drives out and then
+  # retraces itself with negated commands, so it ends near its start; footprints checked
+  # against the workspace with 10 cm margin (ideal kinematics).
+  R1_straight_fb: {x: 0.50, y: 0.45, yaw: 90}    # forward/back up to 0.4 m
+  R2_spin_rates:  {x: 0.50, y: 0.65, yaw: 90}    # in place
+  R3_arcs_slow:   {x: 0.50, y: 0.60, yaw: 90}
+  R4_arcs_fast:   {x: 0.50, y: 0.55, yaw: 90}
+  R5_nav_pattern: {x: 0.80, y: 0.45, yaw: 90}    # opening left spin swings it to x ~0.07
+  default:        {x: 0.50, y: 0.65, yaw: 90}
+
+# Where the rover is parked after the last trial of a session.
+park: {x: 0.50, y: 0.50, yaw: 90}
+
+# Stop the loop (rover parked) below this pack voltage: this rover browns out and the
+# motors die before the Jetson does when the pack sags (3S pack, ~10.0 V is low).
+battery_min_v: 10.4   # pack browned out the motors at 10.17 V (2026-11-03)
+
+# Sim parameters the loop updates (geometry and masses are locked by calib_params).
+# wheel_distance = turning gain (the one knob the spin features identify, see
+# docs/PARAMETER_TEST_VALIDATION.md); drive_max_force = torque cap (ramps + spin scrub).
+optimise:
+  keys: [wheel_distance, drive_max_force]
+
+# Real-vs-sim features scored per test (optimize/features.py names). A test with an
+# empty list is still driven, simulated and mapped, but does not steer the update.
+# T4_arc is display-only: the sim currently cannot follow an arc at all (open defect,
+# sim radius ~2.9 m vs real ~0.14 m), so scoring it would swamp the loss with an
+# error no parameter can remove.
+scoring:
+  T1_straight:    [v_ss, dist, tau_v]
+  T2_spin:        [omega_mean, dyaw, turn_walk]
+  T3_speed_sweep: [v_ss_s0, v_ss_s1, v_ss_s2, v_ss_s3]
+  T3b_top_speed:  [v_ss_max]
+  T4_arc:         []
+  T5_stop:        [coast_time, coast_dist]
+  T6_spin_sweep:  [omega_s0, omega_s1, omega_s2, omega_s3]
+  # Response-map battery: signed per-step forward speed (v_k<i>) and yaw rate (w_k<i>) of
+  # every step - the command->response map over the whole Nav2/teleop envelope.
+  # Glob patterns are allowed in scoring lists.
+  R1_straight_fb: ["v_k*", "w_k*"]
+  R2_spin_rates:  ["w_k*"]
+  R3_arcs_slow:   ["v_k*", "w_k*"]
+  R4_arcs_fast:   ["v_k*", "w_k*"]
+  R5_nav_pattern: ["v_k*", "w_k*"]
+
+# Camera + odometry fusion for homing (fusion.py). The camera is absolute but ~0.2 s
+# late; odometry is prompt but drifts. yaw_source gyro = IMU yaw rate (immune to the
+# heavy wheel slip of in-place spins on carpet); odom_source wheel | rf2o.
+fusion:
+  enabled: true
+  cam_latency_s: 0.60      # measure with: loop/selfcheck.py --motion
+  gain: 0.3                # how fast camera fixes pull the fused pose
+  yaw_source: gyro
+  # MEASURED 2026-10-20: rf2o translation is unusable on this rover (1.4 cm reported for a
+  # 10.7 cm move - the LD19 sees the rover's own mast at 3-4 cm, which never moves), so
+  # translation comes from wheel odometry, which over-reads ~12% on this carpet.
+  odom_source: wheel
+  odom_scale: 0.89         # carpet preset - MEASURE: loop/measure_odom_scale.py --write
+
+# Lidar obstacle stop in the rover agent: translation toward anything closer than
+# this to the moving face is blocked (and a running trial is aborted). 0 = off.
+obstacle_guard_m: 0.10
+
+# Teach-and-repeat start stations (stations.py).
+stations:
+  lidar_tol_m: 0.02        # accept when the lidar fingerprint says within 2 cm ...
+  lidar_tol_deg: 3.0       # ... and 3 deg (carpet stick-slip: smallest achievable turn ~4-7 deg)
+  accept_m: 0.04           # "good enough" band: stop fine moves and accept within 4 cm ...
+  accept_deg: 6.0          # ... and 6 deg (a further carpet move is coarser than this)
+  lateral_ignore_m: 0.03   # sideways offsets up to 3 cm are not corrected (the back-up
+                           # manoeuvre that fixes them costs 8-20 deg of heading on carpet)
+  camera_tol_m: 0.04       # camera-only fallback tolerance (station without lidar)
+  camera_tol_deg: 6.0
+  consistency_m: 0.03      # camera vs lidar disagreement that triggers a warning
+  consistency_deg: 2.5
+  fine_iterations: 4       # lidar-corrected fine moves before giving up
+  scans_teach: 20          # median of N scans for the fingerprint
+  scans_check: 8
+  lidar_offset: [0.0, 0.0, 1.5708]   # lidar in base_footprint (x, y, yaw). MEASURED 2026-10-20
+                                     # (selfcheck --motion): the LD19's 0 deg points 90 deg off
+                                     # the rover's forward axis (launch file says 0 - wrong)
+  lidar_flip: false        # scan turns clockwise (mirrored). VERIFY: selfcheck.py --motion
+  require_lidar: false     # true: refuse a trial when the lidar check is unavailable
+
+# Trial time alignment. Real tracks are re-timed so t=0 is the sequence start. The motion
+# onset detector is used when it agrees (within 0.35 s) with the rig latency below; slow
+# stick-slip spins fool it (fired 1-2.3 s late, 2026-11-03), then the rig latency is used.
+timing:
+  link_latency_s: 0.15     # rover link + motor lag on top of fusion.cam_latency_s (0.71)

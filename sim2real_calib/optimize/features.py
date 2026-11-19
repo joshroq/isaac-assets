@@ -53,18 +53,20 @@ ABS_SIGMA_FLOOR = {"v_k": 0.005, "w_k": 0.02}
 MIN_REPEATS = 5    # repeats per test before sigma counts as measured
 
 
+# Track CSV with columns t, x, y, yaw -> four numpy arrays.
 def load_csv(path):
     t, x, y, yaw = [], [], [], []
-    with open(path) as f:
-        for row in csv.DictReader(f):
+    with open(path) as csv_file:
+        for row in csv.DictReader(csv_file):
             t.append(float(row["t"])); x.append(float(row["x"]))
             y.append(float(row["y"])); yaw.append(float(row["yaw"]))
     return np.array(t), np.array(x), np.array(y), np.array(yaw)
 
 
+# Command sequence yaml ('steps': linear, angular, duration) -> list of steps.
 def load_sequence(path):
-    with open(path) as f:
-        text = f.read()
+    with open(path) as yaml_file:
+        text = yaml_file.read()
     try:
         import yaml
         data = yaml.safe_load(text)
@@ -72,218 +74,230 @@ def load_sequence(path):
         import json
         data = json.loads(text)
     steps = data["steps"]
-    for s in steps:
-        s.setdefault("linear", 0.0); s.setdefault("angular", 0.0); s.setdefault("duration", 0.0)
+    for step in steps:
+        step.setdefault("linear", 0.0); step.setdefault("angular", 0.0); step.setdefault("duration", 0.0)
     return steps
 
 
+# Kind of one command step: 'straight', 'spin', 'arc' or 'idle'.
 def _seg_type(step):
-    lin, ang = abs(step["linear"]) > 1e-9, abs(step["angular"]) > 1e-9
-    if lin and ang:
+    has_linear, has_angular = abs(step["linear"]) > 1e-9, abs(step["angular"]) > 1e-9
+    if has_linear and has_angular:
         return "arc"
-    if lin:
+    if has_linear:
         return "straight"
-    if ang:
+    if has_angular:
         return "spin"
     return "idle"
 
 
+# Timeline of the sequence: (kind, start time, end time, step) per step.
 def _segments(steps, t0=0.0):
     """Yield (type, t_start, t_end, step) over the sequence timeline (aligned to track t=0)."""
-    t = t0
-    out = []
-    for s in steps:
-        out.append((_seg_type(s), t, t + s["duration"], s))
-        t += s["duration"]
-    return out
+    elapsed = t0
+    segments = []
+    for step in steps:
+        segments.append((_seg_type(step), elapsed, elapsed + step["duration"], step))
+        elapsed += step["duration"]
+    return segments
 
 
+# Boolean mask of samples with lo <= t < hi.
 def _window(t, lo, hi):
     return (t >= lo) & (t < hi)
 
 
+# Speed (m/s) and yaw rate (rad/s) per sample by finite differences.
 def _speed_yawrate(t, x, y, yaw):
-    yaw_u = np.unwrap(yaw)
-    dt = np.gradient(t)
-    dt[dt == 0] = 1e-6
-    v = np.hypot(np.gradient(x), np.gradient(y)) / dt
-    w = np.gradient(yaw_u) / dt
-    return v, w, yaw_u
+    yaw_unwrapped = np.unwrap(yaw)
+    dt_s = np.gradient(t)
+    dt_s[dt_s == 0] = 1e-6
+    speed = np.hypot(np.gradient(x), np.gradient(y)) / dt_s
+    yaw_rate = np.gradient(yaw_unwrapped) / dt_s
+    return speed, yaw_rate, yaw_unwrapped
 
 
+# Every canonical feature (see the module docstring) of one track, measured inside
+# the time windows of the sequence's straight / spin / arc / idle steps. Steady-state
+# values use the last SS_TAIL fraction of a step (tail()).
 def extract(t, x, y, yaw, steps, t_offset=0.0):
     """Return the canonical feature dict for one track + sequence."""
     if len(t) < 4:
         return {}
-    v, w, yaw_u = _speed_yawrate(t, x, y, yaw)
-    segs = _segments(steps, t_offset)
+    speed, yaw_rate, yaw_u = _speed_yawrate(t, x, y, yaw)
+    segments = _segments(steps, t_offset)
     feats: dict = {}
 
+    # Path length of the masked samples.
     def arclen(m):
         return float(np.sum(np.hypot(np.diff(x[m]), np.diff(y[m])))) if m.sum() > 1 else 0.0
 
+    # Mask of the last SS_TAIL fraction of [lo, hi) (the whole window if that is empty).
     def tail(lo, hi):
         m = _window(t, hi - SS_TAIL * (hi - lo), hi)
         return m if m.sum() else _window(t, lo, hi)
 
     # --- latency: first commanded motion edge -> first sample that moves ---
-    first = next((s for s in segs if s[0] != "idle"), None)
-    if first is not None:
-        moving = (v > MOVE_SPEED) | (np.abs(w) > MOVE_RATE)
-        idx = np.nonzero((t >= first[1]) & moving)[0]
-        if len(idx):
-            feats["t_lat"] = float(t[idx[0]] - first[1])
+    first_moving_seg = next((s for s in segments if s[0] != "idle"), None)
+    if first_moving_seg is not None:
+        is_moving = (speed > MOVE_SPEED) | (np.abs(yaw_rate) > MOVE_RATE)
+        sample_index = np.nonzero((t >= first_moving_seg[1]) & is_moving)[0]
+        if len(sample_index):
+            feats["t_lat"] = float(t[sample_index[0]] - first_moving_seg[1])
 
     # --- straight: every step (per-step speeds) + the longest (ties -> highest command) ---
-    straights = [(s[1], s[2], s[3]) for s in segs if s[0] == "straight"]
-    for i, (lo, hi, _) in enumerate(straights):
+    straights = [(s[1], s[2], s[3]) for s in segments if s[0] == "straight"]
+    for index, (lo, hi, _) in enumerate(straights):
         m = tail(lo, hi)
         if m.sum():
-            feats[f"v_ss_s{i}"] = float(np.median(v[m]))
+            feats[f"v_ss_s{index}"] = float(np.median(speed[m]))
     if straights:
-        step_v = [feats[f"v_ss_s{i}"] for i in range(len(straights)) if f"v_ss_s{i}" in feats]
-        if step_v:
-            feats["v_ss_max"] = float(max(step_v))
+        straight_speeds = [feats[f"v_ss_s{index}"] for index in range(len(straights)) if f"v_ss_s{index}" in feats]
+        if straight_speeds:
+            feats["v_ss_max"] = float(max(straight_speeds))
         lo, hi, _ = max(straights, key=lambda s: (round(s[1] - s[0], 6), abs(s[2]["linear"])))
         m = _window(t, lo, hi)
         if m.sum() > 2:
-            vss = float(np.median(v[tail(lo, hi)]))
-            feats["v_ss"] = vss
+            steady_speed = float(np.median(speed[tail(lo, hi)]))
+            feats["v_ss"] = steady_speed
             feats["dist"] = arclen(m)
             # tau_v from MOTION ONSET (removes command latency, which the old definition
             # folded in): onset = first sample above MOVE_SPEED in the step. Only for a step
             # that starts from rest (a speed-sweep step starts already moving).
-            prev = [s for s in segs if abs(s[2] - lo) < 1e-9]
-            from_rest = not prev or prev[0][0] == "idle"
-            tt, vv = t[m], v[m]
-            on = np.argmax(vv > MOVE_SPEED) if np.any(vv > MOVE_SPEED) else 0
-            reach = np.argmax(vv >= 0.632 * vss) if np.any(vv >= 0.632 * vss) else len(vv) - 1
+            previous_segs = [s for s in segments if abs(s[2] - lo) < 1e-9]
+            from_rest = not previous_segs or previous_segs[0][0] == "idle"
+            seg_times, seg_speeds = t[m], speed[m]
+            onset_index = np.argmax(seg_speeds > MOVE_SPEED) if np.any(seg_speeds > MOVE_SPEED) else 0
+            reach_index = np.argmax(seg_speeds >= 0.632 * steady_speed) if np.any(seg_speeds >= 0.632 * steady_speed) else len(seg_speeds) - 1
             if from_rest:
-                feats["tau_v"] = float(max(tt[reach] - tt[on], 1e-3))
+                feats["tau_v"] = float(max(seg_times[reach_index] - seg_times[onset_index], 1e-3))
 
     # --- coast: first idle segment that follows a straight/arc, from DECELERATION ONSET ---
-    for i, s in enumerate(segs):
-        if s[0] == "idle" and i > 0 and segs[i - 1][0] in ("straight", "arc"):
+    for index, s in enumerate(segments):
+        if s[0] == "idle" and index > 0 and segments[index - 1][0] in ("straight", "arc"):
             lo, hi = s[1], s[2]
             m = _window(t, lo, hi)
-            pre = _window(t, segs[i - 1][1], lo)
-            if m.sum() > 2 and pre.sum():
-                tt, vv = t[m], v[m]
-                v0 = float(np.median(v[pre][-max(1, pre.sum() // 5):]))
-                dec = np.argmax(vv < 0.9 * v0) if np.any(vv < 0.9 * v0) else 0
-                stop = dec + (np.argmax(vv[dec:] <= STOP_SPEED) if np.any(vv[dec:] <= STOP_SPEED)
-                              else len(vv) - 1 - dec)
-                feats["coast_time"] = float(max(tt[stop] - tt[dec], 0.0))
-                feats["coast_dist"] = arclen(_window(t, tt[dec], tt[stop] + 1e-9))
+            before_coast = _window(t, segments[index - 1][1], lo)
+            if m.sum() > 2 and before_coast.sum():
+                seg_times, seg_speeds = t[m], speed[m]
+                speed_before = float(np.median(speed[before_coast][-max(1, before_coast.sum() // 5):]))
+                decel_index = np.argmax(seg_speeds < 0.9 * speed_before) if np.any(seg_speeds < 0.9 * speed_before) else 0
+                stop_index = decel_index + (np.argmax(seg_speeds[decel_index:] <= STOP_SPEED) if np.any(seg_speeds[decel_index:] <= STOP_SPEED)
+                              else len(seg_speeds) - 1 - decel_index)
+                feats["coast_time"] = float(max(seg_times[stop_index] - seg_times[decel_index], 0.0))
+                feats["coast_dist"] = arclen(_window(t, seg_times[decel_index], seg_times[stop_index] + 1e-9))
             break
 
     # --- spin: every step (mean rate over the tail) + the longest ---
-    spins = [(s[1], s[2]) for s in segs if s[0] == "spin"]
-    for i, (lo, hi) in enumerate(spins):
+    spins = [(s[1], s[2]) for s in segments if s[0] == "spin"]
+    for index, (lo, hi) in enumerate(spins):
         m = tail(lo, hi)
         if m.sum() > 1:
-            tt = t[m]
-            feats[f"omega_s{i}"] = float(abs(yaw_u[m][-1] - yaw_u[m][0]) / max(tt[-1] - tt[0], 1e-6))
+            seg_times = t[m]
+            feats[f"omega_s{index}"] = float(abs(yaw_u[m][-1] - yaw_u[m][0]) / max(seg_times[-1] - seg_times[0], 1e-6))
     if spins:
-        rates = [feats[f"omega_s{i}"] for i in range(len(spins)) if f"omega_s{i}" in feats]
-        if rates:
-            feats["omega_max"] = float(max(rates))
+        spin_rates = [feats[f"omega_s{index}"] for index in range(len(spins)) if f"omega_s{index}" in feats]
+        if spin_rates:
+            feats["omega_max"] = float(max(spin_rates))
         lo, hi = max(spins, key=lambda ab: ab[1] - ab[0])
         m = _window(t, lo, hi)
         if m.sum() > 2:
-            wss = float(np.median(np.abs(w[tail(lo, hi)])))
-            feats["omega_ss"] = wss
+            steady_yaw_rate = float(np.median(np.abs(yaw_rate[tail(lo, hi)])))
+            feats["omega_ss"] = steady_yaw_rate
             feats["dyaw"] = float(abs(yaw_u[m][-1] - yaw_u[m][0]))
             feats["omega_mean"] = feats["dyaw"] / max(hi - lo, 1e-6)
-            tt, ww = t[m], np.abs(w[m])
-            thresh = 0.632 * wss
-            idx = np.argmax(ww >= thresh) if np.any(ww >= thresh) else len(ww) - 1
-            feats["tau_omega"] = float(max(tt[idx] - tt[0], 1e-3))
+            seg_times, seg_yaw_rates = t[m], np.abs(yaw_rate[m])
+            rise_threshold = 0.632 * steady_yaw_rate
+            sample_index = np.argmax(seg_yaw_rates >= rise_threshold) if np.any(seg_yaw_rates >= rise_threshold) else len(seg_yaw_rates) - 1
+            feats["tau_omega"] = float(max(seg_times[sample_index] - seg_times[0], 1e-3))
             # turn-walk: how far the body centre translated during the spin
             feats["turn_walk"] = float(np.hypot(x[m][-1] - x[m][0], y[m][-1] - y[m][0]))
 
     # --- spin coast: first idle segment after a spin ---
-    for i, s in enumerate(segs):
-        if s[0] == "idle" and i > 0 and segs[i - 1][0] == "spin":
+    for index, s in enumerate(segments):
+        if s[0] == "idle" and index > 0 and segments[index - 1][0] == "spin":
             m = _window(t, s[1], s[2])
             if m.sum() > 2:
-                tt, ww = t[m], np.abs(w[m])
-                stop = np.argmax(ww <= STOP_RATE) if np.any(ww <= STOP_RATE) else len(ww) - 1
-                feats["spin_coast_time"] = float(tt[stop] - tt[0])
-                feats["spin_coast_angle"] = float(abs(yaw_u[m][stop] - yaw_u[m][0]))
+                seg_times, seg_yaw_rates = t[m], np.abs(yaw_rate[m])
+                stop_index = np.argmax(seg_yaw_rates <= STOP_RATE) if np.any(seg_yaw_rates <= STOP_RATE) else len(seg_yaw_rates) - 1
+                feats["spin_coast_time"] = float(seg_times[stop_index] - seg_times[0])
+                feats["spin_coast_angle"] = float(abs(yaw_u[m][stop_index] - yaw_u[m][0]))
             break
 
     # --- every non-idle step: signed response (command -> achieved twist) ---
-    fwd = np.cos(yaw_u) * np.gradient(x) + np.sin(yaw_u) * np.gradient(y)
-    dt = np.gradient(t)
-    dt[dt == 0] = 1e-6
-    v_signed = fwd / dt
-    for i, (kind, lo, hi, _) in enumerate(segs):
+    forward_step = np.cos(yaw_u) * np.gradient(x) + np.sin(yaw_u) * np.gradient(y)
+    dt_s = np.gradient(t)
+    dt_s[dt_s == 0] = 1e-6
+    v_signed = forward_step / dt_s
+    for index, (kind, lo, hi, _) in enumerate(segments):
         if kind == "idle":
             continue
         m = tail(lo, hi)
         if m.sum() > 1:
-            tt = t[m]
-            feats[f"v_k{i}"] = float(np.median(v_signed[m]))
-            feats[f"w_k{i}"] = float((yaw_u[m][-1] - yaw_u[m][0]) / max(tt[-1] - tt[0], 1e-6))
+            seg_times = t[m]
+            feats[f"v_k{index}"] = float(np.median(v_signed[m]))
+            feats[f"w_k{index}"] = float((yaw_u[m][-1] - yaw_u[m][0]) / max(seg_times[-1] - seg_times[0], 1e-6))
 
     # --- arc: first arc segment ---
-    arcs = [(s[1], s[2]) for s in segs if s[0] == "arc"]
+    arcs = [(s[1], s[2]) for s in segments if s[0] == "arc"]
     if arcs:
         lo, hi = arcs[0]
         m = _window(t, lo, hi)
         if m.sum() > 2:
-            vv, ww = np.median(v[m]), np.median(np.abs(w[m]))
-            feats["arc_radius"] = float(vv / ww) if ww > 1e-6 else float("inf")
+            seg_speeds, seg_yaw_rates = np.median(speed[m]), np.median(np.abs(yaw_rate[m]))
+            feats["arc_radius"] = float(seg_speeds / seg_yaw_rates) if seg_yaw_rates > 1e-6 else float("inf")
     return feats
 
 
+# Across repeats: mean, sample sigma (floored at 2 % of the mean / an absolute floor,
+# so the loss can't blow up on a lucky low spread) and count, per feature.
 def aggregate(feature_dicts):
     """{feature: {mean, sigma}} across repeated trials; sigma floored so the loss is stable."""
-    keys = set().union(*[set(d) for d in feature_dicts]) if feature_dicts else set()
-    out = {}
-    few = []
-    for k in keys:
-        vals = np.array([d[k] for d in feature_dicts if k in d and np.isfinite(d[k])])
-        if len(vals) == 0:
+    feature_names = set().union(*[set(trial_features) for trial_features in feature_dicts]) if feature_dicts else set()
+    stats = {}
+    small_counts = []
+    for feature in feature_names:
+        values = np.array([trial_features[feature] for trial_features in feature_dicts if feature in trial_features and np.isfinite(trial_features[feature])])
+        if len(values) == 0:
             continue
-        mean = float(np.mean(vals))
-        sigma = float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0
-        floor = max(0.02 * abs(mean), ABS_SIGMA_FLOOR.get(k.split("_k")[0] + "_k"
-                                                          if "_k" in k else k, 1e-3))
-        if len(vals) < MIN_REPEATS:
-            few.append(len(vals))
-        out[k] = {"mean": mean, "sigma": max(sigma, floor), "n": int(len(vals))}
-    if few:                                   # one line, not one per feature
-        print(f"[features] note: {len(few)} feature(s) from only {min(few)}-{max(few)} trial(s) "
+        mean = float(np.mean(values))
+        sigma = float(np.std(values, ddof=1)) if len(values) > 1 else 0.0
+        sigma_floor = max(0.02 * abs(mean), ABS_SIGMA_FLOOR.get(feature.split("_k")[0] + "_k"
+                                                          if "_k" in feature else feature, 1e-3))
+        if len(values) < MIN_REPEATS:
+            small_counts.append(len(values))
+        stats[feature] = {"mean": mean, "sigma": max(sigma, sigma_floor), "n": int(len(values))}
+    if small_counts:                                   # one line, not one per feature
+        print(f"[features] note: {len(small_counts)} feature(s) from only {min(small_counts)}-{max(small_counts)} trial(s) "
               f"(< {MIN_REPEATS}): sigma = measured spread, floored at max(2 %, absolute "
               f"floor), so it is a rough estimate", file=sys.stderr)
-    return out
+    return stats
 
 
+# Command line: print one track's features, or aggregate several (mean + sigma).
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
+    parser = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("csv", nargs="*", help="track CSV(s)")
-    ap.add_argument("--sequence", required=True)
-    ap.add_argument("--aggregate", nargs="+", help="CSVs to aggregate to mean+sigma")
-    ap.add_argument("--offset", type=float, default=0.0, help="track t for sequence t=0")
-    args = ap.parse_args()
+    parser.add_argument("csv", nargs="*", help="track CSV(s)")
+    parser.add_argument("--sequence", required=True)
+    parser.add_argument("--aggregate", nargs="+", help="CSVs to aggregate to mean+sigma")
+    parser.add_argument("--offset", type=float, default=0.0, help="track t for sequence t=0")
+    args = parser.parse_args()
     steps = load_sequence(args.sequence)
     if args.aggregate:
-        feats = [extract(*load_csv(c), steps, args.offset) for c in args.aggregate]
-        agg = aggregate(feats)
+        trial_features = [extract(*load_csv(csv_path), steps, args.offset) for csv_path in args.aggregate]
+        aggregated = aggregate(trial_features)
         try:
             import yaml
-            print(yaml.safe_dump(agg, sort_keys=True))
+            print(yaml.safe_dump(aggregated, sort_keys=True))
         except Exception:
-            print(agg)
+            print(aggregated)
         return 0
-    for c in args.csv:
-        f = extract(*load_csv(c), steps, args.offset)
-        print(c)
-        for k in sorted(f):
-            print(f"  {k:12s} {f[k]:.4f}")
+    for csv_path in args.csv:
+        features = extract(*load_csv(csv_path), steps, args.offset)
+        print(csv_path)
+        for feature in sorted(features):
+            print(f"  {feature:12s} {features[feature]:.4f}")
     return 0
 
 

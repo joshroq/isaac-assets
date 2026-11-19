@@ -4,7 +4,8 @@ Every demo (real + sim driven together, no optimiser) and optimiser (closed loop
 
 | started | kind | session | tests | drive | headline |
 |---|---|---|---|---|---|
-| 2026-11-18 12:46 | optimizer | [Closed sim2real loop - padded (padded_20261118_124645)](loop/runs/padded_20261118_124645/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (PhysX wheel drives) |  |
+| 2026-11-18 20:08 | optimizer | [Closed sim2real loop - padded (padded_20261118_200848)](loop/runs/padded_20261118_200848/index.md) | T1_straight, T2_spin, T3_speed_sweep, T5_stop, T6_spin_sweep | wheel contact (PhysX wheel drives) | iteration 1: rms z 6.00 -> 2.26; wheel_distance=0.2675, drive_max_force=2.233 |
+| 2026-11-18 13:06 | optimizer | [Closed sim2real loop - padded (padded_20261118_124645)](loop/runs/padded_20261118_124645/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (PhysX wheel drives) |  |
 | 2026-11-18 12:44 | optimizer | [Closed sim2real loop - padded (padded_20261118_124411)](loop/runs/padded_20261118_124411/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (PhysX wheel drives) |  |
 | 2026-11-12 08:41 | optimizer | [verify_20261112_082754](loop/runs/verify_20261112_082754) |  |  |  |
 | 2026-11-12 08:16 | optimizer | [Closed sim2real loop - concrete (concrete_20261111_140923)](loop/runs/concrete_20261111_140923/index.md) | T1_straight, T2_spin, T3_speed_sweep, T3b_top_speed, T4_arc, T5_stop … | wheel contact (physics) |  |

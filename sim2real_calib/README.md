@@ -5,6 +5,10 @@ on each surface (thick/thin carpet, padded, concrete). We compare that to the
 Isaac Sim rover driving the *same* `/cmd_vel` commands and tune sim parameters
 (+ the command→actual slip gap) until sim matches reality.
 
+For the current surface workflow, start with the [demo-day guide](DEMO_DAY.md).
+The [per-file change guide](CODE_CHANGES.md) explains the readability updates and
+the camera-exposure, rig-profile, and odometry-scale tools.
+
 The Isaac backend shares the updated `base_link_fixed2.stl` chassis through
 `jetson_rover_v2.usd`; no separate calibration mesh needs replacing. Wheel
 geometry and per-surface effective `wheelDistance` values are preserved because

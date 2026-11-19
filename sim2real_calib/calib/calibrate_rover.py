@@ -18,6 +18,10 @@ from sticker_tracker import DEFAULT_CONFIG, StickerTracker
 HERE = Path(__file__).resolve().parent
 
 
+# --mode setup: hand over to calibrate_stickers.py (same command-line options).
+# --mode check: print one line per NEW camera frame - the tracked chassis pose
+# ('chassis center: x=.. y=.. yaw=..') or 'No pose: <why>'. surface_demo.py counts these
+# lines to measure the tracking rate. Exit code 0 if any pose was found, 4 if none.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('check', 'setup'), default='check')
@@ -39,32 +43,32 @@ def main():
     except ValueError as exc:
         print('ERROR:', exc, file=sys.stderr)
         return 2
-    H, _, _ = load_calib(HERE.parent / 'calib' / 'grid_calib.json')
-    source = LatestFrame()
+    image_to_grid_homography, _, _ = load_calib(HERE.parent / 'calib' / 'grid_calib.json')
+    camera_stream = LatestFrame()
     deadline = time.monotonic() + args.duration if args.duration else math.inf
-    last_frame = -1
-    samples = 0
+    last_frame_number = -1
+    poses_found = 0
     try:
         while time.monotonic() < deadline:
-            frame, _, number = source.read()
-            if frame is None or number == last_frame:
+            frame, _, frame_number = camera_stream.read()
+            if frame is None or frame_number == last_frame_number:
                 time.sleep(.01)
                 continue
-            last_frame = number
-            result = tracker.detect(frame, H)
+            last_frame_number = frame_number
+            result = tracker.detect(frame, image_to_grid_homography)
             if result is None:
                 print('No pose:', tracker.status, flush=True)
             else:
-                samples += 1
-                x, y = result['center_m']
+                poses_found += 1
+                chassis_x_m, chassis_y_m = result['center_m']
                 label = 'chassis center' if tracker.measurement_ready else 'PREVIEW ' + tracker.reference_point
-                print(f'{label}: x={x:.4f} y={y:.4f} yaw={result["heading_deg"]:.2f} deg; '
+                print(f'{label}: x={chassis_x_m:.4f} y={chassis_y_m:.4f} yaw={result["heading_deg"]:.2f} deg; '
                       f'{tracker.status}', flush=True)
     except KeyboardInterrupt:
         pass
     finally:
-        source.release()
-    return 0 if samples else 4
+        camera_stream.release()
+    return 0 if poses_found else 4
 
 
 if __name__ == '__main__':

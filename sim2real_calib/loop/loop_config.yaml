@@ -8,7 +8,7 @@
 # the fence keeps the whole chassis on foam; concrete-era recorded excursions were
 # x 0.23-0.86, y 0.08-1.00. (concrete fence: x [-0.15, 1.15], y [-0.15, 1.05])
 workspace:
-  x: [-0.15, 1.00]
+  x: [-0.15, 1.15]
   y: [0.00, 1.30]
 
 # Return-to-start ("homing") controller - closed loop on the overhead camera pose.
@@ -16,10 +16,9 @@ homing:
   pos_tol_m: 0.035         # done when within this distance ...
   yaw_tol_deg: 4.0         # ... and this heading error
   max_linear: 0.12         # m/s command caps while homing
-  max_angular: 1.6         # rad/s  (carpet 0.9; concrete spins need far more command)
+  max_angular: 0.9         # rad/s (carpet preset)
   min_linear: 0.06         # carpet deadband: smaller commands don't move the rover
-  min_angular: 0.9         # concrete 2026-11-11: 0.8 cmd -> only ~0.13 rad/s in place (high grip,
-                           # skid-steer resists turning); carpet was 0.45
+  min_angular: 0.45        # carpet preset; homing raises it if the rover stalls
   k_linear: 0.8            # m/s per m of distance
   k_angular: 1.2           # rad/s per rad of heading error
   latency_s: 0.70          # raw-camera lag (measured 0.71 s); used only if fusion is off
@@ -100,9 +99,7 @@ fusion:
   # 10.7 cm move - the LD19 sees the rover's own mast at 3-4 cm, which never moves), so
   # translation comes from wheel odometry, which over-reads ~12% on this carpet.
   odom_source: wheel
-  odom_scale: 0.93         # PADDED 2026-11-18: camera/wheel 0.954/0.958 fwd, 0.890/0.932 back
-                           # (concrete 0.96: 0.964 fwd, 0.961 back)
-                           # (carpet 0.89: camera 10.7 cm / wheel 12.0 cm)
+  odom_scale: 0.89         # carpet preset - MEASURE: loop/measure_odom_scale.py --write
 
 # Lidar obstacle stop in the rover agent: translation toward anything closer than
 # this to the moving face is blocked (and a running trial is aborted). 0 = off.

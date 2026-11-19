@@ -34,27 +34,31 @@ sys.path.insert(0, str(HERE))
 import features as F  # noqa: E402
 
 
+# Seconds of zero command at the start of a sequence (before the first motion).
 def settle_time(steps):
     """Leading zero-command duration before the first commanded motion."""
-    t = 0.0
-    for s in steps:
-        if abs(s.get("linear", 0)) < 1e-9 and abs(s.get("angular", 0)) < 1e-9:
-            t += s["duration"]
+    idle_s = 0.0
+    for step in steps:
+        if abs(step.get("linear", 0)) < 1e-9 and abs(step.get("angular", 0)) < 1e-9:
+            idle_s += step["duration"]
         else:
             break
-    return t
+    return idle_s
 
 
+# Time of the first 5-sample run of motion (> 3 cm/s or > 0.12 rad/s) in a track.
 def motion_onset(t, x, y, yaw):
     """First sustained motion in the real track (5 consecutive moving samples)."""
-    v, w, _ = F._speed_yawrate(t, x, y, yaw)
-    moving = (np.abs(v) > 0.03) | (np.abs(w) > 0.12)
-    for i in range(len(moving) - 5):
-        if moving[i:i + 5].all():
-            return float(t[i])
+    speed, yaw_rate, _ = F._speed_yawrate(t, x, y, yaw)
+    is_moving = (np.abs(speed) > 0.03) | (np.abs(yaw_rate) > 0.12)
+    for index in range(len(is_moving) - 5):
+        if is_moving[index:index + 5].all():
+            return float(t[index])
     return float(t[0])
 
 
+# Time shift that lines the real track's motion onset up with the sequence's first
+# commanded motion (see docstring).
 def aligned_offset(t, x, y, yaw, steps):
     """t_offset mapping the real motion onset to the sequence's first commanded motion.
 
@@ -67,73 +71,76 @@ def aligned_offset(t, x, y, yaw, steps):
     return motion_onset(t, x, y, yaw) - settle_time(steps)
 
 
+# Features of a real CSV after onset alignment; returns (features, offset s).
 def extract_aligned(csv, steps):
     t, x, y, yaw = F.load_csv(csv)
-    off = aligned_offset(t, x, y, yaw, steps)
-    return F.extract(t, x, y, yaw, steps, t_offset=off), off
+    offset_s = aligned_offset(t, x, y, yaw, steps)
+    return F.extract(t, x, y, yaw, steps, t_offset=offset_s), offset_s
 
 
+# 95th-percentile |speed| and |yaw rate| of a track (robust 'top speed').
 def top_speed(csv):
     t, x, y, yaw = F.load_csv(csv)
-    v, w, _ = F._speed_yawrate(t, x, y, yaw)
+    speed, yaw_rate, _ = F._speed_yawrate(t, x, y, yaw)
     # robust peak: 95th percentile of |v|,|w| (ignores single-sample camera spikes)
-    return float(np.percentile(np.abs(v), 95)), float(np.percentile(np.abs(w), 95))
+    return float(np.percentile(np.abs(speed), 95)), float(np.percentile(np.abs(yaw_rate), 95))
 
 
+# Command line: one targets.yaml from NAME:real_csv:sequence triples (see docstring).
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
+    parser = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--test", action="append", default=[],
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--test", action="append", default=[],
                     help="NAME:real_csv:sequence.yaml")
-    ap.add_argument("--exclude", action="append", default=[],
+    parser.add_argument("--exclude", action="append", default=[],
                     help="NAME:feature to drop")
-    ap.add_argument("--combine-mode", default="min")
-    ap.add_argument("--top-speed-from", default="T3b_top_speed",
+    parser.add_argument("--combine-mode", default="min")
+    parser.add_argument("--top-speed-from", default="T3b_top_speed",
                     help="test NAME whose track sets the measured top LINEAR speed")
-    ap.add_argument("--top-rate-from", default="T6_spin_sweep",
+    parser.add_argument("--top-rate-from", default="T6_spin_sweep",
                     help="test NAME whose track sets the measured top YAW rate")
-    args = ap.parse_args()
+    args = parser.parse_args()
 
     excludes = {}
-    for e in args.exclude:
-        name, feat = e.split(":")
-        excludes.setdefault(name, set()).add(feat)
+    for exclude_spec in args.exclude:
+        name, feature_name = exclude_spec.split(":")
+        excludes.setdefault(name, set()).add(feature_name)
 
-    doc = {"surface": "live", "combine_mode": args.combine_mode, "tests": {}}
-    for spec in args.test:
-        name, csv, seq = spec.split(":")
-        csv_p = (HERE / csv).resolve() if not Path(csv).is_absolute() else Path(csv)
-        seq_p = (HERE / seq).resolve() if not Path(seq).is_absolute() else Path(seq)
-        if not csv_p.exists():
-            sys.exit(f"missing real csv for {name}: {csv_p}")
-        steps = F.load_sequence(str(seq_p))
-        feats, off = extract_aligned(str(csv_p), steps)
-        agg = F.aggregate([feats])
-        for f in excludes.get(name, ()):
-            agg.pop(f, None)
-        doc["tests"][name] = {"sequence": steps,
-                              "features": {k: {"mean": v["mean"], "sigma": v["sigma"]}
-                                           for k, v in agg.items()},
-                              "real_csv": str(csv_p), "onset_offset_s": round(off, 3)}
-        print(f"[{name}] features from {csv_p.name} (motion-onset offset {off:+.2f}s):")
-        for k in sorted(agg):
-            tag = " (EXCLUDED)" if k in excludes.get(name, ()) else ""
-            print(f"    {k:12s} {agg[k]['mean']:+.4f}  (sigma {agg[k]['sigma']:.4f}){tag}")
+    targets_doc = {"surface": "live", "combine_mode": args.combine_mode, "tests": {}}
+    for test_spec in args.test:
+        name, csv, sequence = test_spec.split(":")
+        csv_path = (HERE / csv).resolve() if not Path(csv).is_absolute() else Path(csv)
+        sequence_path = (HERE / sequence).resolve() if not Path(sequence).is_absolute() else Path(sequence)
+        if not csv_path.exists():
+            sys.exit(f"missing real csv for {name}: {csv_path}")
+        steps = F.load_sequence(str(sequence_path))
+        trial_features, offset_s = extract_aligned(str(csv_path), steps)
+        aggregated = F.aggregate([trial_features])
+        for excluded_feature in excludes.get(name, ()):
+            aggregated.pop(excluded_feature, None)
+        targets_doc["tests"][name] = {"sequence": steps,
+                              "features": {feature: {"mean": stats["mean"], "sigma": stats["sigma"]}
+                                           for feature, stats in aggregated.items()},
+                              "real_csv": str(csv_path), "onset_offset_s": round(offset_s, 3)}
+        print(f"[{name}] features from {csv_path.name} (motion-onset offset {offset_s:+.2f}s):")
+        for feature in sorted(aggregated):
+            tag = " (EXCLUDED)" if feature in excludes.get(name, ()) else ""
+            print(f"    {feature:12s} {aggregated[feature]['mean']:+.4f}  (sigma {aggregated[feature]['sigma']:.4f}){tag}")
         if name in (args.top_speed_from, args.top_rate_from):
-            vmax, wmax = top_speed(str(csv_p))
-            top = doc.setdefault("top_speed", {})
+            top_linear, top_angular = top_speed(str(csv_path))
+            top_speeds = targets_doc.setdefault("top_speed", {})
             if name == args.top_speed_from:
-                top["linear"] = vmax
-                print(f"    top_speed    linear={vmax:.4f} m/s")
+                top_speeds["linear"] = top_linear
+                print(f"    top_speed    linear={top_linear:.4f} m/s")
             if name == args.top_rate_from:
-                top["angular"] = wmax
-                print(f"    top_speed    angular={wmax:.4f} rad/s")
+                top_speeds["angular"] = top_angular
+                print(f"    top_speed    angular={top_angular:.4f} rad/s")
 
-    out = (HERE / args.out).resolve() if not Path(args.out).is_absolute() else Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(yaml.safe_dump(doc, sort_keys=False))
-    print(f"\nwrote {out}")
+    out_path = (HERE / args.out).resolve() if not Path(args.out).is_absolute() else Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(yaml.safe_dump(targets_doc, sort_keys=False))
+    print(f"\nwrote {out_path}")
     return 0
 
 

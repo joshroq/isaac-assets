@@ -1,0 +1,8 @@
+{
+  "surface": "padded",
+  "saved": "2026-11-18 20:25:40",
+  "notes": [
+    "2026-11-18 20:25 EVA foam mats, DIM light, camera 300/200; recording padded_20261118_124645 = 19/72 trials (T1-T6 x2, R1-R5 x1), battery stop; partial fit padded_20261118_200848 (T1,T2,T3,T5,T6 iter_01): rms z 6.00 -> 2.26, wheel_distance 0.2675, drive_max_force 2.23 -> surfaces/padded_loop.yaml",
+    "2026-11-18 20:25 auto-saved before creating 'light_carpet'"
+  ]
+}

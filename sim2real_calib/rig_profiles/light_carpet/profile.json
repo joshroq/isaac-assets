@@ -1,0 +1,15 @@
+{
+  "surface": "light_carpet",
+  "preset": "carpet",
+  "created": "2026-11-18 20:25:40",
+  "notes": [
+    "2026-11-18 20:25 created from 'padded' with the carpet preset"
+  ],
+  "todo": [
+    "grid",
+    "camera",
+    "stickers",
+    "rig",
+    "workspace"
+  ]
+}
