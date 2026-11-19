@@ -19,6 +19,10 @@ for the Waveshare Jetson UGV rover.
 
 ## Sim-to-real source and results
 
+See the [per-file change guide](sim2real_calib/CODE_CHANGES.md) for the readability
+updates, supporting tools, and saved settings. The
+[demo-day guide](sim2real_calib/DEMO_DAY.md) walks through the current surface workflow.
+
 `sim2real_system/` contains independent copies of the source, configuration, rover
 USD, saved stations, tests, and a held-out verification report. It is a source
 snapshot for browsing and sharing; run the system from the original repository

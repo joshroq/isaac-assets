@@ -38,53 +38,63 @@ sys.path.insert(0, str(SC / "calib"))
 from grid_target import as_dims, grid_dims  # noqa: E402
 
 
+# Mask (255 = use) of the floor around the grid, padded by pad_m, with a disc of
+# radius rover_r around the rover cut out: features on the moving rover would make the
+# camera look like it moved.
 def floor_mask(shape, H_m2img, grid_m=1.0, pad_m=0.35, rover_xy=None, rover_r=0.25):
     """Floor region around the grid (where the static tape/carpet texture is), with the
     rover's disc removed so its motion can't drag the registration."""
-    h, w = shape[:2]
-    gw, gh = as_dims(grid_m)
-    m = np.zeros((h, w), np.uint8)
-    poly = np.array([[-pad_m, -pad_m], [gw + pad_m, -pad_m],
-                     [gw + pad_m, gh + pad_m], [-pad_m, gh + pad_m]], float)
-    px = cv2.perspectiveTransform(poly.reshape(-1, 1, 2), H_m2img).reshape(-1, 2)
-    cv2.fillConvexPoly(m, px.astype(np.int32), 255)
+    image_h, image_w = shape[:2]
+    grid_w_m, grid_h_m = as_dims(grid_m)
+    mask = np.zeros((image_h, image_w), np.uint8)
+    floor_polygon_m = np.array([[-pad_m, -pad_m], [grid_w_m + pad_m, -pad_m],
+                     [grid_w_m + pad_m, grid_h_m + pad_m], [-pad_m, grid_h_m + pad_m]], float)
+    floor_polygon_px = cv2.perspectiveTransform(floor_polygon_m.reshape(-1, 1, 2), H_m2img).reshape(-1, 2)
+    cv2.fillConvexPoly(mask, floor_polygon_px.astype(np.int32), 255)
     if rover_xy is not None:
-        ang = np.linspace(0, 2 * np.pi, 24, endpoint=False)
-        disc = np.column_stack([rover_xy[0] + rover_r * np.cos(ang),
-                                rover_xy[1] + rover_r * np.sin(ang)])
-        dp = cv2.perspectiveTransform(disc.reshape(-1, 1, 2), H_m2img).reshape(-1, 2)
-        cv2.fillConvexPoly(m, dp.astype(np.int32), 0)
-    return m
+        angles = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+        rover_disc_m = np.column_stack([rover_xy[0] + rover_r * np.cos(angles),
+                                rover_xy[1] + rover_r * np.sin(angles)])
+        rover_disc_px = cv2.perspectiveTransform(rover_disc_m.reshape(-1, 1, 2), H_m2img).reshape(-1, 2)
+        cv2.fillConvexPoly(mask, rover_disc_px.astype(np.int32), 0)
+    return mask
 
 
+# Feature registration of the reference image onto the current one: ORB keypoints in
+# the masks, Lowe ratio test (0.75), RANSAC homography (2 px threshold). Needs >= 40
+# matches and >= 30 inliers. Returns (3x3 reference->current pixel H, stats) or (None, why).
 def register(ref, cur, mask_ref, mask_cur, n_features=4000):
     """Homography mapping reference pixels -> current pixels (None if unreliable)."""
-    orb = cv2.ORB_create(n_features, scaleFactor=1.2, nlevels=8, fastThreshold=10)
-    g1 = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
-    g2 = cv2.cvtColor(cur, cv2.COLOR_BGR2GRAY)
-    k1, d1 = orb.detectAndCompute(g1, mask_ref)
-    k2, d2 = orb.detectAndCompute(g2, mask_cur)
-    if d1 is None or d2 is None or len(k1) < 50 or len(k2) < 50:
+    orb_detector = cv2.ORB_create(n_features, scaleFactor=1.2, nlevels=8, fastThreshold=10)
+    ref_gray = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
+    cur_gray = cv2.cvtColor(cur, cv2.COLOR_BGR2GRAY)
+    ref_keypoints, ref_descriptors = orb_detector.detectAndCompute(ref_gray, mask_ref)
+    cur_keypoints, cur_descriptors = orb_detector.detectAndCompute(cur_gray, mask_cur)
+    if ref_descriptors is None or cur_descriptors is None or len(ref_keypoints) < 50 or len(cur_keypoints) < 50:
         return None, {"why": "too few features"}
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING)
-    good = []
-    for pair in bf.knnMatch(d1, d2, k=2):
-        if len(pair) == 2 and pair[0].distance < 0.75 * pair[1].distance:
-            good.append(pair[0])
-    if len(good) < 40:
-        return None, {"why": f"only {len(good)} feature matches"}
-    p1 = np.float32([k1[m.queryIdx].pt for m in good])
-    p2 = np.float32([k2[m.trainIdx].pt for m in good])
-    H, inl = cv2.findHomography(p1, p2, cv2.RANSAC, 2.0, maxIters=5000, confidence=0.999)
-    if H is None:
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
+    good_matches = []
+    for match_pair in matcher.knnMatch(ref_descriptors, cur_descriptors, k=2):
+        if len(match_pair) == 2 and match_pair[0].distance < 0.75 * match_pair[1].distance:
+            good_matches.append(match_pair[0])
+    if len(good_matches) < 40:
+        return None, {"why": f"only {len(good_matches)} feature matches"}
+    ref_points = np.float32([ref_keypoints[match.queryIdx].pt for match in good_matches])
+    cur_points = np.float32([cur_keypoints[match.trainIdx].pt for match in good_matches])
+    ref_to_cur, inlier_mask = cv2.findHomography(ref_points, cur_points, cv2.RANSAC, 2.0, maxIters=5000, confidence=0.999)
+    if ref_to_cur is None:
         return None, {"why": "no homography"}
-    n_in = int(inl.sum())
-    if n_in < 30:
-        return None, {"why": f"only {n_in} RANSAC inliers"}
-    return H, {"matches": len(good), "inliers": n_in}
+    inlier_count = int(inlier_mask.sum())
+    if inlier_count < 30:
+        return None, {"why": f"only {inlier_count} RANSAC inliers"}
+    return ref_to_cur, {"matches": len(good_matches), "inliers": inlier_count}
 
 
+# Compares the live camera image with the reference saved right after the grid
+# calibration, to tell whether the camera has moved since.
 class CameraGuard:
+    # Load the reference image + metadata. warn_px = shift that counts as 'moved';
+    # fail_px = shift too large to correct (the grid must be re-calibrated).
     def __init__(self, warn_px=2.0, fail_px=25.0):
         self.warn_px, self.fail_px = warn_px, fail_px
         if not REF_IMG.exists():
@@ -97,6 +107,9 @@ class CameraGuard:
         self.ref_rover = meta.get("rover_xy")
         self.meta = meta
 
+    # The reference only makes sense with the grid calibration it was saved with. Returns
+    # a reason string if the grid was re-calibrated (or resized) after the reference was
+    # saved; None if it still matches.
     def stale_reason(self, grid=None):
         """Why the reference no longer belongs to grid_calib.json (None = it does).
 
@@ -115,76 +128,84 @@ class CameraGuard:
                 return "grid_calib.json was re-calibrated after the reference was saved"
             return None
         # legacy reference: compare the two grid->pixel mappings directly
-        w, h = self.grid_m
-        c = np.array([[0, 0], [w, 0], [w, h], [0, h]], float).reshape(-1, 1, 2)
-        a = cv2.perspectiveTransform(c, self.H_m2img_ref).reshape(-1, 2)
-        b = cv2.perspectiveTransform(c, np.array(grid["H_m2img"], float)).reshape(-1, 2)
-        d = float(np.max(np.linalg.norm(a - b, axis=1)))
-        if d > 3.0:
-            return f"grid_calib.json differs from the reference's grid by {d:.0f} px"
+        grid_w_m, grid_h_m = self.grid_m
+        corners_m = np.array([[0, 0], [grid_w_m, 0], [grid_w_m, grid_h_m], [0, grid_h_m]], float).reshape(-1, 1, 2)
+        ref_corners_px = cv2.perspectiveTransform(corners_m, self.H_m2img_ref).reshape(-1, 2)
+        grid_corners_px = cv2.perspectiveTransform(corners_m, np.array(grid["H_m2img"], float)).reshape(-1, 2)
+        max_difference_px = float(np.max(np.linalg.norm(ref_corners_px - grid_corners_px, axis=1)))
+        if max_difference_px > 3.0:
+            return f"grid_calib.json differs from the reference's grid by {max_difference_px:.0f} px"
         return None
 
+    # Register `frame` to the reference and report how far (pixels) the four grid corners
+    # moved - the camera-motion size that check() compares against warn_px / fail_px.
     def measure_shift(self, frame, rover_xy=None):
         """Register frame against the reference -> dict(shift_px, H (ref px -> now px), ...)."""
-        m_ref = floor_mask(self.ref.shape, self.H_m2img_ref, self.grid_m, rover_xy=self.ref_rover)
-        m_cur = floor_mask(frame.shape, self.H_m2img_ref, self.grid_m, rover_xy=rover_xy,
+        ref_mask = floor_mask(self.ref.shape, self.H_m2img_ref, self.grid_m, rover_xy=self.ref_rover)
+        cur_mask = floor_mask(frame.shape, self.H_m2img_ref, self.grid_m, rover_xy=rover_xy,
                            rover_r=0.30)
-        H, info = register(self.ref, frame, m_ref, m_cur)
-        if H is None:
-            return {"shift_px": None, "why": info["why"]}
-        w, h = self.grid_m
-        corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], float).reshape(-1, 1, 2)
-        c_ref = cv2.perspectiveTransform(corners, self.H_m2img_ref).reshape(-1, 2)
-        c_now = cv2.perspectiveTransform(c_ref.reshape(-1, 1, 2), H).reshape(-1, 2)
-        shift = float(np.max(np.linalg.norm(c_now - c_ref, axis=1)))
-        return {"shift_px": round(shift, 2), "H": H, **info}
+        ref_to_now, match_info = register(self.ref, frame, ref_mask, cur_mask)
+        if ref_to_now is None:
+            return {"shift_px": None, "why": match_info["why"]}
+        grid_w_m, grid_h_m = self.grid_m
+        corners = np.array([[0, 0], [grid_w_m, 0], [grid_w_m, grid_h_m], [0, grid_h_m]], float).reshape(-1, 1, 2)
+        ref_corners_px = cv2.perspectiveTransform(corners, self.H_m2img_ref).reshape(-1, 2)
+        now_corners_px = cv2.perspectiveTransform(ref_corners_px.reshape(-1, 1, 2), ref_to_now).reshape(-1, 2)
+        shift_px = float(np.max(np.linalg.norm(now_corners_px - ref_corners_px, axis=1)))
+        return {"shift_px": round(shift_px, 2), "H": ref_to_now, **match_info}
 
+    # Full check: stale reference -> not ok; else measure the shift and return the
+    # corrected grid->pixel homography (reference->now motion composed with the reference
+    # mapping), ok = shift below fail_px, moved = shift at least warn_px.
     def check(self, frame, rover_xy=None):
         """-> dict(ok, moved, shift_px, H_m2img (corrected, grid->current pixels), ...)."""
-        stale = self.stale_reason()
-        if stale:
+        stale_why = self.stale_reason()
+        if stale_why:
             return {"ok": False, "moved": None,
-                    "why": f"camera reference is stale ({stale}); run "
+                    "why": f"camera reference is stale ({stale_why}); run "
                            "loop/camera_guard.py --save-reference"}
-        m = self.measure_shift(frame, rover_xy)
-        if m["shift_px"] is None:
-            return {"ok": False, "moved": None, "why": m["why"]}
-        H, shift = m.pop("H"), m["shift_px"]
-        H_new = H @ self.H_m2img_ref
-        H_new /= H_new[2, 2]
-        res = {"ok": shift < self.fail_px, "moved": shift >= self.warn_px,
-               "H_m2img": H_new, **m}
-        if shift >= self.fail_px:
-            res["why"] = (f"camera moved {shift:.0f} px - too far to trust a correction; "
+        measurement = self.measure_shift(frame, rover_xy)
+        if measurement["shift_px"] is None:
+            return {"ok": False, "moved": None, "why": measurement["why"]}
+        ref_to_now, shift_px = measurement.pop("H"), measurement["shift_px"]
+        corrected_m2img = ref_to_now @ self.H_m2img_ref
+        corrected_m2img /= corrected_m2img[2, 2]
+        result = {"ok": shift_px < self.fail_px, "moved": shift_px >= self.warn_px,
+               "H_m2img": corrected_m2img, **measurement}
+        if shift_px >= self.fail_px:
+            result["why"] = (f"camera moved {shift_px:.0f} px - too far to trust a correction; "
                           "re-run calib/calibrate_grid.py then --save-reference")
-        return res
+        return result
 
 
+# One clean frame from the overhead stream (waits 1 s for a keyframe).
 def grab_frame(timeout=20.0):
     sys.path.insert(0, str(SC / "capture"))
     from stream import LatestFrame, STREAM_URL
-    cam = LatestFrame(STREAM_URL)
+    camera_stream = LatestFrame(STREAM_URL)
     try:
-        if cam.wait_first(timeout) is None:
+        if camera_stream.wait_first(timeout) is None:
             raise RuntimeError("no camera frame (stream down / UDP 5000 busy)")
         time.sleep(1.0)              # let the decoder reach a clean keyframe
-        return cam.read()[0].copy()
+        return camera_stream.read()[0].copy()
     finally:
-        cam.release()
+        camera_stream.release()
 
 
+# Store the current frame + the current grid mapping as the new reference.
 def save_reference(frame, rover_xy=None):
     REF_DIR.mkdir(exist_ok=True)
     grid = json.loads(GRID.read_text())
     cv2.imwrite(str(REF_IMG), frame)
-    w, h = grid_dims(grid)
+    grid_w_m, grid_h_m = grid_dims(grid)
     REF_META.write_text(json.dumps({"H_m2img": grid["H_m2img"],
                                     "grid_size_m": grid.get("grid_size_m", 1.0),
-                                    "grid_width_m": w, "grid_height_m": h,
+                                    "grid_width_m": grid_w_m, "grid_height_m": grid_h_m,
                                     "grid_calibrated_at": grid.get("calibrated_at"),
                                     "rover_xy": rover_xy, "saved": time.ctime()}, indent=2))
 
 
+# Overwrite grid_calib.json with a corrected homography (old file backed up first).
 def write_grid(H_m2img):
     grid = json.loads(GRID.read_text())
     backup = GRID.with_name(f"grid_calib.before_guard_{time.strftime('%Y%m%d_%H%M%S')}.json")
@@ -192,8 +213,8 @@ def write_grid(H_m2img):
     H_m2img = np.asarray(H_m2img, float)
     H_img2m = np.linalg.inv(H_m2img)
     H_img2m /= H_img2m[2, 2]
-    w, h = grid_dims(grid)
-    corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], float)
+    grid_w_m, grid_h_m = grid_dims(grid)
+    corners = np.array([[0, 0], [grid_w_m, 0], [grid_w_m, grid_h_m], [0, grid_h_m]], float)
     grid["H_m2img"] = H_m2img.tolist()
     grid["H_img2m"] = H_img2m.tolist()
     grid["corners_px"] = cv2.perspectiveTransform(
@@ -203,55 +224,58 @@ def write_grid(H_m2img):
     return backup
 
 
+# Warp the reference by known small camera motions; the guard must measure each
+# shift to within 1 px.
 def self_test():
     """Warp the reference by a known small camera motion; the guard must measure it."""
     guard = CameraGuard()
-    h, w = guard.ref.shape[:2]
-    for dx, dy, rot in [(0, 0, 0.0), (6, -4, 0.4), (-12, 8, -0.8)]:
-        M = cv2.getRotationMatrix2D((w / 2, h / 2), rot, 1.0)
-        M[0, 2] += dx
-        M[1, 2] += dy
-        moved = cv2.warpAffine(guard.ref, M, (w, h), borderMode=cv2.BORDER_REFLECT)
-        res = guard.measure_shift(moved)
-        res["moved"] = res["shift_px"] is not None and res["shift_px"] >= guard.warn_px
-        Ht = np.vstack([M, [0, 0, 1]])
-        gw, gh = guard.grid_m
-        c = cv2.perspectiveTransform(np.array([[0, 0], [gw, 0], [gw, gh], [0, gh]], float)
+    image_h, image_w = guard.ref.shape[:2]
+    for shift_x_px, shift_y_px, rotation_deg in [(0, 0, 0.0), (6, -4, 0.4), (-12, 8, -0.8)]:
+        affine = cv2.getRotationMatrix2D((image_w / 2, image_h / 2), rotation_deg, 1.0)
+        affine[0, 2] += shift_x_px
+        affine[1, 2] += shift_y_px
+        moved_image = cv2.warpAffine(guard.ref, affine, (image_w, image_h), borderMode=cv2.BORDER_REFLECT)
+        result = guard.measure_shift(moved_image)
+        result["moved"] = result["shift_px"] is not None and result["shift_px"] >= guard.warn_px
+        true_motion = np.vstack([affine, [0, 0, 1]])
+        grid_w_m, grid_h_m = guard.grid_m
+        ref_corners_px = cv2.perspectiveTransform(np.array([[0, 0], [grid_w_m, 0], [grid_w_m, grid_h_m], [0, grid_h_m]], float)
                                      .reshape(-1, 1, 2), guard.H_m2img_ref).reshape(-1, 2)
-        truth = np.max(np.linalg.norm(cv2.perspectiveTransform(c.reshape(-1, 1, 2), Ht)
-                                      .reshape(-1, 2) - c, axis=1))
-        print(f"  applied shift {truth:5.1f} px -> measured {res.get('shift_px')} px  "
-              f"moved={res.get('moved')} inliers={res.get('inliers')}")
-        if res.get("shift_px") is None or abs(res["shift_px"] - truth) > 1.0:
+        true_shift_px = np.max(np.linalg.norm(cv2.perspectiveTransform(ref_corners_px.reshape(-1, 1, 2), true_motion)
+                                      .reshape(-1, 2) - ref_corners_px, axis=1))
+        print(f"  applied shift {true_shift_px:5.1f} px -> measured {result.get('shift_px')} px  "
+              f"moved={result.get('moved')} inliers={result.get('inliers')}")
+        if result.get("shift_px") is None or abs(result["shift_px"] - true_shift_px) > 1.0:
             return False
     return True
 
 
+# Command line: --save-reference | --check [--write] | --self-test.
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description=__doc__,
+    parser = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--save-reference", action="store_true")
-    ap.add_argument("--check", action="store_true")
-    ap.add_argument("--write", action="store_true", help="with --check: rewrite grid_calib.json")
-    ap.add_argument("--self-test", action="store_true")
-    args = ap.parse_args()
+    parser.add_argument("--save-reference", action="store_true")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--write", action="store_true", help="with --check: rewrite grid_calib.json")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
     if args.self_test:
-        ok = self_test()
-        print("SELF-TEST", "PASSED" if ok else "FAILED")
-        return 0 if ok else 1
+        passed = self_test()
+        print("SELF-TEST", "PASSED" if passed else "FAILED")
+        return 0 if passed else 1
     if args.save_reference:
-        f = grab_frame()
-        save_reference(f)
+        frame = grab_frame()
+        save_reference(frame)
         print(f"saved {REF_IMG} with the current grid_calib.json homography")
         return 0
     if args.check:
-        res = CameraGuard().check(grab_frame())
-        print({k: v for k, v in res.items() if k != "H_m2img"})
-        if args.write and res.get("moved") and res.get("ok"):
-            print(f"grid_calib.json updated (backup {write_grid(res['H_m2img']).name})")
-        return 0 if res.get("ok") else 1
-    ap.print_help()
+        result = CameraGuard().check(grab_frame())
+        print({key: value for key, value in result.items() if key != "H_m2img"})
+        if args.write and result.get("moved") and result.get("ok"):
+            print(f"grid_calib.json updated (backup {write_grid(result['H_m2img']).name})")
+        return 0 if result.get("ok") else 1
+    parser.print_help()
     return 2
 
 

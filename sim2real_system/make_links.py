@@ -33,7 +33,8 @@ MANIFEST = {
         f"{SC}/calib/grid_target.py", f"{SC}/calib/calibrate_grid.py", f"{SC}/calib/grid_calib.json",
         f"{SC}/calib/sticker_tracker.py", f"{SC}/calib/calibrate_stickers.py",
         f"{SC}/calib/sticker_config.json", f"{SC}/calib/verify_stickers.py",
-        f"{SC}/overhead/camera_model.py", f"{SC}/live_tracking.py"],
+        f"{SC}/overhead/camera_model.py", f"{SC}/live_tracking.py",
+        f"{SC}/calib/camera_exposure.py", f"{SC}/calib/camera_settings.json"],
     "03_real_rover_link": [
         f"{SC}/loop/rover_link.py", f"{SC}/loop/rover_agent.py",
         "rover_nav/start_bringup.sh", "rover_nav/stop_all.sh", "rover_nav/local_ros_env.sh",
@@ -66,7 +67,9 @@ MANIFEST = {
         "jetson_rover_v2.usd"],
     "09_closed_loop_orchestrator": [
         f"{SC}/loop/closed_loop.py", f"{SC}/loop/selfcheck.py", f"{SC}/viz/dashboard.py",
-        f"{SC}/viz/metric_overlay.py", f"{SC}/viz/param_sheet.py", f"{SC}/viz/session_index.py"],
+        f"{SC}/viz/metric_overlay.py", f"{SC}/viz/param_sheet.py", f"{SC}/viz/session_index.py",
+        f"{SC}/surface_demo.py", f"{SC}/rig_profile.py", f"{SC}/DEMO_DAY.md",
+        f"{SC}/loop/measure_odom_scale.py"],
     "10_verification_and_report": [
         f"{SC}/loop/verify_params.py", f"{SC}/loop/runs/verify_20261112_082754/report.md"],
     "11_tests": [

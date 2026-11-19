@@ -29,25 +29,29 @@ RUN_GROUND = REPO / "ugv_controller_v2" / "run_ground_plane.py"
 ODOM_TOPIC = os.environ.get("CALIB_ODOM_TOPIC", "/ugv_sim/odom")
 
 
+# Write a dict as YAML (key order kept).
 def _write_yaml(path, data):
     import yaml
     Path(path).write_text(yaml.safe_dump(data, sort_keys=False))
 
 
+# Remove stale Fast DDS shared-memory segments (see docstring). The fastdds
+# script has no shebang, so it must be run through `sh`.
 def _clean_dds_shm():
     """Drop Fast DDS shared-memory ports left by dead processes. A publisher blocks on a
     zombie reader's port, which hung Isaac's odometry mid-battery (2026-11-03). Only
     segments whose owner is gone are removed, so live ROS processes are unaffected."""
     # /opt/ros/humble/bin/fastdds is a shell script with no shebang: exec'ing it directly
     # fails with ENOEXEC (silently, before 2026-11-05), so run it through sh.
-    exe = shutil.which("fastdds") or "/opt/ros/humble/bin/fastdds"
+    fastdds_path = shutil.which("fastdds") or "/opt/ros/humble/bin/fastdds"
     try:
-        r = subprocess.run(["sh", exe, "shm", "clean"], capture_output=True, text=True, timeout=15)
-        return r.returncode == 0
+        result = subprocess.run(["sh", fastdds_path, "shm", "clean"], capture_output=True, text=True, timeout=15)
+        return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
 
+# Terminate (then kill) the Isaac process group so no orphan keeps the GPU.
 def _stop_isaac(proc):
     """Stop only this trial's process group, including python.sh's child."""
     try:
@@ -70,6 +74,10 @@ def _stop_isaac(proc):
         pass
 
 
+# Drive the running Isaac sim over ROS 2 and record its odometry: publish zero
+# /cmd_vel until odometry advances and the drive graph subscribes, then hold each step's
+# command for its duration in SIM time (odometry stamps), recording (t, x, y, yaw) with
+# t = 0 at the first step. Writes out_csv; raises if Isaac dies, stalls or overruns.
 def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
     import rclpy
     from geometry_msgs.msg import Twist
@@ -83,12 +91,14 @@ def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
     node = rclpy.create_node("calib_sim_trial", context=context)
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(node)
-    pub = node.create_publisher(Twist, "/cmd_vel", 10)
+    cmd_vel_pub = node.create_publisher(Twist, "/cmd_vel", 10)
     state = {"sample": None, "previous_stamp": None, "advancing": False,
              "progress_at": time.monotonic()}
     rows = []
     start_stamp = None
 
+    # Odometry callback: keep the newest pose (yaw from the quaternion) and record it
+    # once the sequence has started; ignore repeated or older stamps.
     def on_odom(msg):
         stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         if state["previous_stamp"] is not None:
@@ -97,15 +107,16 @@ def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
             state["advancing"] = True
         state["previous_stamp"] = stamp
         state["progress_at"] = time.monotonic()
-        p, q = msg.pose.pose.position, msg.pose.pose.orientation
-        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y),
-                         1 - 2 * (q.y * q.y + q.z * q.z))
-        state["sample"] = (stamp, p.x, p.y, yaw)
+        position, orientation = msg.pose.pose.position, msg.pose.pose.orientation
+        yaw = math.atan2(2 * (orientation.w * orientation.z + orientation.x * orientation.y),
+                         1 - 2 * (orientation.y * orientation.y + orientation.z * orientation.z))
+        state["sample"] = (stamp, position.x, position.y, yaw)
         if start_stamp is not None:
-            rows.append((stamp - start_stamp, p.x, p.y, yaw))
+            rows.append((stamp - start_stamp, position.x, position.y, yaw))
 
     node.create_subscription(Odometry, odom_topic, on_odom, qos_profile_sensor_data)
 
+    # Raise if Isaac exited or the overall deadline passed.
     def check_alive():
         if proc.poll() is not None:
             raise RuntimeError(f"Isaac exited with code {proc.returncode}")
@@ -115,9 +126,9 @@ def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
     try:
         # Topic discovery alone is insufficient: require advancing samples and
         # the baked command subscriber before beginning the sequence.
-        while not (state["advancing"] and pub.get_subscription_count()):
+        while not (state["advancing"] and cmd_vel_pub.get_subscription_count()):
             check_alive()
-            pub.publish(Twist())
+            cmd_vel_pub.publish(Twist())
             executor.spin_once(timeout_sec=0.05)
         start_stamp, x, y, yaw = state["sample"]
         rows.append((0.0, x, y, yaw))
@@ -128,18 +139,18 @@ def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
             command = Twist()
             command.linear.x = step["linear"]
             command.angular.z = step["angular"]
-            pub.publish(command)
+            cmd_vel_pub.publish(command)
             while state["sample"][0] - start_stamp < boundary:
                 check_alive()
                 now = time.monotonic()
                 if now - state["progress_at"] > 10:
                     raise RuntimeError(f"{odom_topic} stopped advancing for 10 seconds")
                 if now - last_publish >= 0.05:
-                    pub.publish(command)
+                    cmd_vel_pub.publish(command)
                     last_publish = now
                 executor.spin_once(timeout_sec=0.01)
-        with open(out_csv, "w", newline="") as f:
-            writer = csv.writer(f)
+        with open(out_csv, "w", newline="") as csv_file:
+            writer = csv.writer(csv_file)
             writer.writerow(("t", "x", "y", "yaw"))
             writer.writerows(rows)
     finally:
@@ -147,7 +158,7 @@ def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
         try:
             stop_deadline = time.monotonic() + 0.3
             while time.monotonic() < stop_deadline:
-                pub.publish(Twist())
+                cmd_vel_pub.publish(Twist())
                 executor.spin_once(timeout_sec=0.02)
         finally:
             executor.shutdown()
@@ -155,6 +166,10 @@ def _record_ros_trial(proc, steps, out_csv, odom_topic, deadline):
             context.shutdown()
 
 
+# One isolated Isaac launch of run_ground_plane.py with the parameter set `theta`
+# (calib.yaml) running `sequence_steps`; returns the trajectory CSV path. All inputs,
+# the CSV and isaac.log stay in workdir. ROS networking env vars are set for the launch
+# and restored afterwards; the process group is always stopped.
 def run_trial(theta: dict, sequence_steps: list, surface: str = "surface",
               combine_mode: str = "min", workdir: str | None = None,
               odom_topic: str | None = None, startup_timeout: float = 240.0,
@@ -167,19 +182,19 @@ def run_trial(theta: dict, sequence_steps: list, surface: str = "surface",
     """
     if mode not in ("ros", "direct"):
         raise ValueError("mode must be 'ros' or 'direct'")
-    steps = [{"linear": float(s.get("linear", 0)),
-              "angular": float(s.get("angular", 0)),
-              "duration": float(s.get("duration", 0))} for s in sequence_steps]
-    if not steps or any(not math.isfinite(v) for s in steps for v in s.values()):
+    steps = [{"linear": float(step.get("linear", 0)),
+              "angular": float(step.get("angular", 0)),
+              "duration": float(step.get("duration", 0))} for step in sequence_steps]
+    if not steps or any(not math.isfinite(value) for step in steps for value in step.values()):
         raise ValueError("sequence must contain finite commands and durations")
-    if any(s["duration"] <= 0 for s in steps):
+    if any(step["duration"] <= 0 for step in steps):
         raise ValueError("sequence durations must be positive")
     if not math.isfinite(startup_timeout) or startup_timeout <= 0:
         raise ValueError("startup_timeout must be positive and finite")
-    work = Path(workdir or tempfile.mkdtemp(prefix=f"calib_{surface}_")).resolve()
-    work.mkdir(parents=True, exist_ok=True)
-    calib_yaml, seq_yaml = work / "calib.yaml", work / "seq.yaml"
-    out_csv, log_path = work / "sim_run.csv", work / "isaac.log"
+    work_dir = Path(workdir or tempfile.mkdtemp(prefix=f"calib_{surface}_")).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    calib_yaml, seq_yaml = work_dir / "calib.yaml", work_dir / "seq.yaml"
+    out_csv, log_path = work_dir / "sim_run.csv", work_dir / "isaac.log"
     _write_yaml(calib_yaml, C.nest(theta))
     _write_yaml(seq_yaml, {"name": surface, "steps": steps})
     out_csv.unlink(missing_ok=True)
@@ -188,30 +203,30 @@ def run_trial(theta: dict, sequence_steps: list, surface: str = "surface",
     # general shell can still use localhost-only for unrelated ROS sessions.
     networking = {"ROS_DOMAIN_ID": str(os.environ.get("ROS_DOMAIN_ID", "0")),
                   "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp", "ROS_LOCALHOST_ONLY": "0"}
-    saved = {k: os.environ.get(k) for k in (*networking, "ROS_DISCOVERY_SERVER")}
+    saved_env = {env_name: os.environ.get(env_name) for env_name in (*networking, "ROS_DISCOVERY_SERVER")}
     os.environ.update(networking)
     os.environ.pop("ROS_DISCOVERY_SERVER", None)
-    env = dict(os.environ, ISAAC_ROS_LOCALHOST_ONLY="0", SIM_REALTIME="1")
+    isaac_env = dict(os.environ, ISAAC_ROS_LOCALHOST_ONLY="0", SIM_REALTIME="1")
     for key in ("SIM_ROS", "SIM_TRIAL_SEQ", "SIM_TRIAL_OUT", "SIM_DIAG"):
-        env.pop(key, None)
+        isaac_env.pop(key, None)
     if mode == "direct":
-        env.update(SIM_TRIAL_SEQ=str(seq_yaml), SIM_TRIAL_OUT=str(out_csv))
+        isaac_env.update(SIM_TRIAL_SEQ=str(seq_yaml), SIM_TRIAL_OUT=str(out_csv))
     _clean_dds_shm()
-    proc = None
+    isaac_proc = None
     try:
         deadline = time.monotonic() + startup_timeout
         with log_path.open("w") as log:
-            proc = subprocess.Popen(
+            isaac_proc = subprocess.Popen(
                 [ISAACPY, str(RUN_GROUND), "--headless", "--no-camera-topics",
                  "--calib", str(calib_yaml), "--combine-mode", combine_mode],
-                env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+                env=isaac_env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
             )
             if mode == "ros":
-                _record_ros_trial(proc, steps, out_csv, odom_topic or ODOM_TOPIC, deadline)
+                _record_ros_trial(isaac_proc, steps, out_csv, odom_topic or ODOM_TOPIC, deadline)
             else:
-                code = proc.wait(timeout=startup_timeout)
-                if code:
-                    raise RuntimeError(f"Isaac exited with code {code}")
+                exit_code = isaac_proc.wait(timeout=startup_timeout)
+                if exit_code:
+                    raise RuntimeError(f"Isaac exited with code {exit_code}")
         if not out_csv.exists() or out_csv.stat().st_size < 20:
             raise RuntimeError("Isaac produced no trajectory samples")
         return str(out_csv)
@@ -219,10 +234,10 @@ def run_trial(theta: dict, sequence_steps: list, surface: str = "surface",
         raise RuntimeError(f"Isaac trial failed: {exc}; inspect {log_path}") from exc
     finally:
         try:
-            if proc is not None:
-                _stop_isaac(proc)
+            if isaac_proc is not None:
+                _stop_isaac(isaac_proc)
         finally:
-            for key, value in saved.items():
+            for key, value in saved_env.items():
                 if value is None:
                     os.environ.pop(key, None)
                 else:

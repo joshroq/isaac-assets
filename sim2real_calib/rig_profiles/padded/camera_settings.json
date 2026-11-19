@@ -1,0 +1,8 @@
+{
+  "mode": "manual",
+  "exposure": 300,
+  "gain": 200,
+  "saved": "2026-11-18 13:05:00",
+  "points_px": [[801, 298], [854, 319], [797, 367]],
+  "note": "padded (EVA foam) session, DIM garage light: set by hand after comparing auto / 300x128 / 300x200 / 300x255 / 200x255 (orange S98 V246, green S255, pink S217). Bright work light used exposure 100 gain 51 (calib/sticker_config.bright_exp100_20261118.json)."
+}

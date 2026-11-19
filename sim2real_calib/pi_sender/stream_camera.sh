@@ -29,6 +29,22 @@ fi
 
 echo "streaming $DEV ${RES}@${FPS} -> udp://${DESKTOP_IP}:${PORT}"
 
+# Fixed exposure (units of 100 us) + gain for sticker tracking. On auto, harsh garage light
+# washed the orange-red sticker out to near-white (S~20) and it dropped out mid-spin, and a
+# lighting change mid-session breaks the calibrated colours either way - keep the light steady.
+# 2026-11-18 settings: dim garage light 300/200 (current); bright work light 100/51
+# (calib/sticker_config.bright_exp100_20261118.json). CAM_EXPOSURE=auto restores auto exposure.
+# Changing these changes the sticker colours: re-run calib/calibrate_stickers.py.
+EXPOSURE="${CAM_EXPOSURE:-300}"
+GAIN="${CAM_GAIN:-200}"
+if command -v v4l2-ctl >/dev/null; then
+  if [ "$EXPOSURE" = auto ]; then
+    v4l2-ctl -d "$DEV" -c auto_exposure=3 || true
+  else
+    v4l2-ctl -d "$DEV" -c auto_exposure=1 -c exposure_time_absolute="$EXPOSURE" -c gain="$GAIN" || true
+  fi
+fi
+
 # -input_format mjpeg: the C920e must deliver MJPEG to hit 720p30 over USB2
 # (raw YUYV maxes out far lower). ffmpeg then re-encodes to low-latency H.264.
 exec ffmpeg -hide_banner -loglevel warning \

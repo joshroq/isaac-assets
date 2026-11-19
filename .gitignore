@@ -39,6 +39,12 @@ sim2real_calib/demo/runs/
 sim2real_calib/navcmp/runs/
 sim2real_calib/optimize/runs/
 
+# Local calibration backups and rig-profile history/progress
+sim2real_calib/calib/*.before_regrid_*.json
+sim2real_calib/rig_profiles/_autosave/
+sim2real_calib/rig_profiles/*/history/
+sim2real_calib/rig_profiles/*/demo_state.json
+
 # Generated navigation recordings and large RTAB-Map databases
 experiments/runs/
 experiments/replay_video/*.mp4

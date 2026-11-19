@@ -60,6 +60,7 @@ REF_MU = 0.75          # nominal grip the scrub factor is evaluated at (kept FIX
                        # mu<->yaw coupling is resolved in Isaac during the stage-6 re-fit)
 
 
+# PhysX friction combine: min, multiply, or average (PhysX's default).
 def _combine(mu_a, mu_b, mode):
     if mode == "min":
         return min(mu_a, mu_b)
@@ -68,24 +69,28 @@ def _combine(mu_a, mu_b, mode):
     return 0.5 * (mu_a + mu_b)  # 'average' (PhysX default)
 
 
+# Derived model constants from a parameter set (schema defaults filled in): speed
+# scale k_v, effective mass / yaw inertia, rolling resistance c0, viscous drags c1 / c1_w,
+# servo gain b_lin, ramp limits, the binding force cap (torque or traction) and the
+# fixed skid-steer yaw efficiency eta. Symbols match docs/MODELING.md.
 def _params(theta: dict, combine_mode: str | None):
-    p = C.defaults()
-    p.update({k: v for k, v in theta.items() if k in p})
-    R = max(p["wheel_radius"], 1e-4)
-    m = p["base_mass"] + N_CONTACT * p["wheel_mass"]
+    params = C.defaults()
+    params.update({key: value for key, value in theta.items() if key in params})
+    R = max(params["wheel_radius"], 1e-4)
+    m = params["base_mass"] + N_CONTACT * params["wheel_mass"]
     m_eff = m + N_CONTACT * I_WHEEL / R_PHYS**2          # + reflected wheel inertia
-    izz_eff = IZZ_BODY + N_CONTACT * p["wheel_mass"] * (TRACK_PHYS / 2) ** 2
-    b = max(p["drive_damping"], 1e-6)
-    tau_max = p["drive_max_force"]
-    d_lin = p["base_linear_damping"]
-    d_ang = p["base_angular_damping"]
-    mu_eff = _combine(p["corner_mu_dynamic"], p["floor_mu_dynamic"], combine_mode or "average")
+    izz_eff = IZZ_BODY + N_CONTACT * params["wheel_mass"] * (TRACK_PHYS / 2) ** 2
+    b = max(params["drive_damping"], 1e-6)
+    tau_max = params["drive_max_force"]
+    d_lin = params["base_linear_damping"]
+    d_ang = params["base_angular_damping"]
+    mu_eff = _combine(params["corner_mu_dynamic"], params["floor_mu_dynamic"], combine_mode or "average")
     f_max = (N_DRIVEN * tau_max / R_PHYS if tau_max < 1e30 else 1e30)   # drive/brake FORCE cap [N]
     # traction ceiling: driven wheels can't push harder than mu*N on their share of weight
     f_trac = mu_eff * m * G * (N_DRIVEN / N_CONTACT)
     return dict(
         R=R, k_v=R_PHYS / R, m=m, m_eff=m_eff, izz_eff=izz_eff,
-        D=p["wheel_distance"], v_max=p["max_linear_speed"], w_max=p["max_angular_speed"],
+        D=params["wheel_distance"], v_max=params["max_linear_speed"], w_max=params["max_angular_speed"],
         mu_eff=mu_eff,
         c0=C_RR * m * G,                                  # constant rolling-resistance force [N]
         # chassis linearDamping d acts as F = m*d*v (linear-momentum decay): drag slope = m*d.
@@ -93,15 +98,18 @@ def _params(theta: dict, combine_mode: str | None):
         c1_w=izz_eff * d_ang,                             # viscous yaw drag slope [N*m/(rad/s)]
         # USD angular drive gains are per DEGREE: b_SI = b * 180/pi [N m s/rad]
         b_lin=N_DRIVEN * b * (180.0 / math.pi) / R_PHYS**2,   # linear-domain servo gain [N/(m/s)]
-        acc=(p.get("max_acceleration") or 0.0) * TICK_DT_SCALE,
-        dec=(p.get("max_deceleration") or 0.0) * TICK_DT_SCALE,
-        acc_w=(p.get("max_angular_acceleration") or 0.0) * TICK_DT_SCALE,
+        acc=(params.get("max_acceleration") or 0.0) * TICK_DT_SCALE,
+        dec=(params.get("max_deceleration") or 0.0) * TICK_DT_SCALE,
+        acc_w=(params.get("max_angular_acceleration") or 0.0) * TICK_DT_SCALE,
         f_max=f_max,
         f_cap=min(f_max, f_trac),                         # the binding force limit (torque OR grip)
         eta=1.0 / (1.0 + KAPPA_SCRUB * REF_MU),           # FIXED nominal skid-steer yaw efficiency
     )
 
 
+# Integrate the reduced model at dt over the sequence (see docstring); per tick:
+# ramp-limit the commands, servo forward speed and yaw rate towards their targets, then
+# integrate the planar pose.
 def simulate(theta: dict, sequence: list, dt: float = 0.01, combine_mode: str | None = None):
     """Integrate the reduced force model. `sequence` = list of {linear, angular, duration}.
 
@@ -116,57 +124,58 @@ def simulate(theta: dict, sequence: list, dt: float = 0.01, combine_mode: str | 
 
     Returns dict of lists: t, x, y, yaw, v, omega.
     """
-    P = _params(theta, combine_mode)
+    model = _params(theta, combine_mode)
     v = w = x = y = yaw = t = 0.0
-    k_rot = P["b_lin"] * (TRACK_PHYS / 2) ** 2            # yaw-servo gain [N*m/(rad/s)]
-    m_cap = P["f_cap"] * (TRACK_PHYS / 2)                 # yaw moment cap [N*m]
+    k_rot = model["b_lin"] * (TRACK_PHYS / 2) ** 2            # yaw-servo gain [N*m/(rad/s)]
+    m_cap = model["f_cap"] * (TRACK_PHYS / 2)                 # yaw moment cap [N*m]
     v_ref = w_ref = 0.0                                   # controller's ramped command
-    T, X, Y, YAW, V, W = [], [], [], [], [], []
+    times, xs, ys, yaws, speeds, yaw_rates = [], [], [], [], [], []
 
+    # One implicit step of a force-capped velocity servo (see docstring).
     def servo(state, target, gain, cap, drag, inertia):
         """One step of a stiff velocity servo, integrated IMPLICITLY (stable for any gain;
         the old explicit step chattered +-24 % because gain*dt/m >> 2), then force-capped."""
-        new = (inertia * state + dt * (gain * target - drag)) / (inertia + dt * gain)
-        force = gain * (target - new)
+        new_state = (inertia * state + dt * (gain * target - drag)) / (inertia + dt * gain)
+        force = gain * (target - new_state)
         if abs(force) > cap:
             force = math.copysign(cap, force)
-            new = state + (force - drag) / inertia * dt
-        return new
+            new_state = state + (force - drag) / inertia * dt
+        return new_state
 
     for step in sequence:
-        vcmd = max(-P["v_max"], min(P["v_max"], float(step.get("linear", 0.0))))
-        wcmd = max(-P["w_max"], min(P["w_max"], float(step.get("angular", 0.0))))
-        n = max(1, int(round(float(step.get("duration", 0.0)) / dt)))
-        for _ in range(n):
+        v_cmd = max(-model["v_max"], min(model["v_max"], float(step.get("linear", 0.0))))
+        w_cmd = max(-model["w_max"], min(model["w_max"], float(step.get("angular", 0.0))))
+        tick_count = max(1, int(round(float(step.get("duration", 0.0)) / dt)))
+        for _ in range(tick_count):
             # DifferentialController ramp limits (linear needs BOTH acc and dec, as in Isaac)
-            if P["acc"] > 0 and P["dec"] > 0:
-                accel = abs(vcmd) > abs(v_ref) and vcmd * v_ref >= 0
-                lim = (P["acc"] if accel else P["dec"]) * dt
-                v_ref = max(v_ref - lim, min(vcmd, v_ref + lim))
+            if model["acc"] > 0 and model["dec"] > 0:
+                is_accelerating = abs(v_cmd) > abs(v_ref) and v_cmd * v_ref >= 0
+                ramp_step = (model["acc"] if is_accelerating else model["dec"]) * dt
+                v_ref = max(v_ref - ramp_step, min(v_cmd, v_ref + ramp_step))
             else:
-                v_ref = vcmd
-            if P["acc_w"] > 0:
-                lim = P["acc_w"] * dt
-                w_ref = max(w_ref - lim, min(wcmd, w_ref + lim))
+                v_ref = v_cmd
+            if model["acc_w"] > 0:
+                ramp_step = model["acc_w"] * dt
+                w_ref = max(w_ref - ramp_step, min(w_cmd, w_ref + ramp_step))
             else:
-                w_ref = wcmd
-            v_target = P["k_v"] * v_ref                   # k_v = r_phys/R (=1 when geometry matched)
-            w_target = P["k_v"] * (P["D"] / TRACK_PHYS) * P["eta"] * w_ref
+                w_ref = w_cmd
+            v_target = model["k_v"] * v_ref                   # k_v = r_phys/R (=1 when geometry matched)
+            w_target = model["k_v"] * (model["D"] / TRACK_PHYS) * model["eta"] * w_ref
             # longitudinal
-            f_drag = (P["c0"] + P["c1"] * abs(v)) * (1.0 if v > 0 else (-1.0 if v < 0 else 0.0))
-            v_new = servo(v, v_target, P["b_lin"], P["f_cap"], f_drag, P["m_eff"])
+            f_drag = (model["c0"] + model["c1"] * abs(v)) * (1.0 if v > 0 else (-1.0 if v < 0 else 0.0))
+            v_new = servo(v, v_target, model["b_lin"], model["f_cap"], f_drag, model["m_eff"])
             v = 0.0 if (v_ref == 0.0 and v_new * v < 0) else v_new   # don't reverse past 0 on coast
             # yaw
-            sgn_w = (1.0 if w > 0 else (-1.0 if w < 0 else 0.0))
-            m_drag = (0.5 * P["c0"] * (TRACK_PHYS / 2)) * sgn_w + P["c1_w"] * w   # Coulomb + viscous
-            w_new = servo(w, w_target, k_rot, m_cap, m_drag, P["izz_eff"])
+            yaw_sign = (1.0 if w > 0 else (-1.0 if w < 0 else 0.0))
+            yaw_drag = (0.5 * model["c0"] * (TRACK_PHYS / 2)) * yaw_sign + model["c1_w"] * w   # Coulomb + viscous
+            w_new = servo(w, w_target, k_rot, m_cap, yaw_drag, model["izz_eff"])
             w = 0.0 if (w_ref == 0.0 and w_new * w < 0) else w_new
             yaw += w * dt
             x += v * math.cos(yaw) * dt
             y += v * math.sin(yaw) * dt
             t += dt
-            T.append(t); X.append(x); Y.append(y); YAW.append(yaw); V.append(v); W.append(w)
-    return dict(t=T, x=X, y=Y, yaw=YAW, v=V, omega=W)
+            times.append(t); xs.append(x); ys.append(y); yaws.append(yaw); speeds.append(v); yaw_rates.append(w)
+    return dict(t=times, x=xs, y=ys, yaw=yaws, v=speeds, omega=yaw_rates)
 
 
 if __name__ == "__main__":

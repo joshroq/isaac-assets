@@ -59,6 +59,7 @@ EVENT_KINDS = ("ready", "seq_start", "seq_step", "seq_done", "seq_abort", "err",
 TIMED_EVENTS = {"seq_start": 0, "seq_step": 1, "seq_done": 0, "link_lost": 0}  # arg idx of T
 
 
+# Any failure talking to the rover (unreachable, agent died, sequence aborted ...).
 class RoverLinkError(RuntimeError):
     pass
 
@@ -67,10 +68,12 @@ class RoverLinkDown(RoverLinkError):
     """The link is (temporarily) down; it reconnects by itself."""
 
 
+# Which odometry the camera+odometry fusion uses: 'rf2o' (lidar) or 'wheel'.
 def _odom_source(cfg):
     return (cfg or {}).get("odom_source", "rf2o")
 
 
+# Converts rover timestamps to desktop time without synchronised clocks.
 class ClockMap:
     """rover time -> desktop time. offset = min over a sliding window of (arrival - rover
     stamp) = clock skew + the link's best one-way delay; the min ignores queueing jitter
@@ -81,23 +84,33 @@ class ClockMap:
         self.samples = deque()                   # (arrival, arrival - stamp)
         self.offset = None
 
+    # Record one (arrival time, rover stamp) pair; keep the minimum delay of the last
+    # window_s seconds as the clock offset.
     def observe(self, arrival, stamp):
-        d = arrival - stamp
-        self.samples.append((arrival, d))
+        apparent_delay = arrival - stamp
+        self.samples.append((arrival, apparent_delay))
         while self.samples and arrival - self.samples[0][0] > self.window_s:
             self.samples.popleft()
-        self.offset = min(s[1] for s in self.samples)
+        self.offset = min(sample[1] for sample in self.samples)
 
+    # Rover stamp -> desktop time (never later than when the line actually arrived).
     def to_desktop(self, stamp, arrival):
         if self.offset is None:
             return arrival
         return min(stamp + self.offset, arrival)  # never later than it actually arrived
 
 
+# Desktop side of the rover connection. rover_agent.py runs detached ON the rover
+# (survives Wi-Fi drops); this class reaches it through `ssh -W` to its TCP port, sends
+# one-line commands ('v lin ang', 'stop', 'seq <json>', 'scan n', 'guard ...') and parses
+# its telemetry lines (odom, gyro, scan, status, events) in a reader thread.
+# State kept here: latest odometry, battery voltage, sensor flags, an event queue.
 class RoverLink:
+    # host = comma list of ssh routes tried in order (LAN then Tailscale). fusion_cfg
+    # (loop_config 'fusion') sets the odometry integrator's yaw source and odom_scale.
     def __init__(self, host=ROVER, start_bringup=True, log=print, logfile=None,
                  fusion_cfg=None, reconnect_timeout=900.0):
-        self.hosts = [h.strip() for h in str(host).split(",") if h.strip()]
+        self.hosts = [route.strip() for route in str(host).split(",") if route.strip()]
         self.host = self.hosts[0]
         self.want_bringup = start_bringup
         self.log = log
@@ -142,71 +155,79 @@ class RoverLink:
     def __exit__(self, *exc):
         self.close()
 
+    # Run one shell command on the rover over ssh (captured output).
     def _ssh(self, cmd, host=None, **kw):
         return subprocess.run(["ssh", *SSHOPTS, host or self.host, cmd], capture_output=True,
                               text=True, timeout=kw.pop("timeout", 30), **kw)
 
+    # First route that answers `ssh true`.
     def _pick_host(self):
         errors = []
-        for h in self.hosts:
+        for route in self.hosts:
             try:
-                r = self._ssh("true", host=h, timeout=20)
-                if r.returncode == 0:
-                    return h
-                errors.append(f"{h}: {r.stderr.strip()[:120]}")
+                ssh_result = self._ssh("true", host=route, timeout=20)
+                if ssh_result.returncode == 0:
+                    return route
+                errors.append(f"{route}: {ssh_result.stderr.strip()[:120]}")
             except subprocess.TimeoutExpired:
-                errors.append(f"{h}: timed out")
+                errors.append(f"{route}: timed out")
         raise RoverLinkError("cannot reach the rover by any route (" + "; ".join(errors) + ")")
 
+    # Copy rover_agent.py to the rover and (re)start it if the running copy differs
+    # (sha256) or is dead. Returns True if a new agent was started.
     def _ensure_agent(self, host):
         """Stage rover_agent.py and make sure exactly THIS version is serving."""
-        src = (HERE / "rover_agent.py").read_bytes()
-        sha = hashlib.sha256(src).hexdigest()[:16]
+        agent_source = (HERE / "rover_agent.py").read_bytes()
+        agent_hash = hashlib.sha256(agent_source).hexdigest()[:16]
         # Liveness by PID FILE: a `pgrep -f rover_agent.py` would match this very ssh
         # command line (it contains the launch text) and report a dead agent as running.
-        alive = ("{ [ -f agent.pid ] && grep -q rover_agent /proc/$(cat agent.pid)/cmdline "
+        agent_alive_test = ("{ [ -f agent.pid ] && grep -q rover_agent /proc/$(cat agent.pid)/cmdline "
                  "2>/dev/null; }")
-        script = (
+        remote_script = (
             f"mkdir -p {REMOTE_DIR} && cd {REMOTE_DIR} && "
-            f"if [ \"$(cat agent.sha 2>/dev/null)\" != {sha} ] || ! {alive}; then "
-            f"  {alive} && {{ kill -INT $(cat agent.pid); sleep 1.5; }}; "
+            f"if [ \"$(cat agent.sha 2>/dev/null)\" != {agent_hash} ] || ! {agent_alive_test}; then "
+            f"  {agent_alive_test} && {{ kill -INT $(cat agent.pid); sleep 1.5; }}; "
             f"  cat > rover_agent.py.new && mv rover_agent.py.new rover_agent.py && "
-            f"  echo {sha} > agent.sha && "
+            f"  echo {agent_hash} > agent.sha && "
             f"  ({ENV}; setsid nohup python3 -u rover_agent.py --serve {AGENT_PORT} "
             f"     > agent.log 2>&1 < /dev/null & echo $! > agent.pid) ; echo started; "
             f"else cat > /dev/null; echo running; fi")
-        r = subprocess.run(["ssh", *SSHOPTS, host, script], input=src, capture_output=True,
+        ssh_result = subprocess.run(["ssh", *SSHOPTS, host, remote_script], input=agent_source, capture_output=True,
                            timeout=60)
-        if r.returncode:
+        if ssh_result.returncode:
             raise RoverLinkError(f"could not start the agent on {host}: "
-                                 f"{r.stderr.decode(errors='replace').strip()[:200]}")
-        return r.stdout.decode().strip().splitlines()[-1:] == ["started"]
+                                 f"{ssh_result.stderr.decode(errors='replace').strip()[:200]}")
+        return ssh_result.stdout.decode().strip().splitlines()[-1:] == ["started"]
 
+    # Open the `ssh -W 127.0.0.1:PORT` transport and wait for the agent's 'ready' line.
     def _connect(self, host, ready_timeout=25.0):
         """Open one ssh -W transport to the agent and wait for its 'ready'."""
-        proc = subprocess.Popen(["ssh", *SSHOPTS, "-W", f"127.0.0.1:{AGENT_PORT}", host],
+        transport = subprocess.Popen(["ssh", *SSHOPTS, "-W", f"127.0.0.1:{AGENT_PORT}", host],
                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, text=True, bufsize=1,
                                 start_new_session=True)
-        ready = threading.Event()
-        threading.Thread(target=self._reader, args=(proc, ready), daemon=True).start()
-        if not ready.wait(ready_timeout):
-            _kill(proc)
+        ready_event = threading.Event()
+        threading.Thread(target=self._reader, args=(transport, ready_event), daemon=True).start()
+        if not ready_event.wait(ready_timeout):
+            _kill(transport)
             raise RoverLinkError(f"agent on {host} did not answer within {ready_timeout:.0f}s")
-        old, self.proc, self.host = self.proc, proc, host
+        old_transport, self.proc, self.host = self.proc, transport, host
         self._up = True
-        if old is not None and old is not proc:
-            _kill(old)
-        return proc
+        if old_transport is not None and old_transport is not transport:
+            _kill(old_transport)
+        return transport
 
+    # Connect: pick a route, ensure the agent, connect (3 tries), start the heartbeat,
+    # refuse a networked rover ROS, start the base driver if /cmd_vel has no subscriber,
+    # then choose the fusion odometry source.
     def open(self, ready_timeout=60.0):
         if self.local:                           # offline tests: stdio agent on this machine
             return self._open_local(ready_timeout)
-        host = self._pick_host()
-        started = self._ensure_agent(host)
+        route = self._pick_host()
+        agent_started = self._ensure_agent(route)
         for attempt in range(3):                 # a freshly started agent needs ROS init time
             try:
-                self._connect(host, ready_timeout=25.0 if attempt else (30.0 if started else 15.0))
+                self._connect(route, ready_timeout=25.0 if attempt else (30.0 if agent_started else 15.0))
                 break
             except RoverLinkError:
                 if attempt == 2:
@@ -215,7 +236,7 @@ class RoverLink:
         self._alive = True
         threading.Thread(target=self._heartbeat, daemon=True).start()
         self.log(f"[rover] agent up on {self.host} (persistent, port {AGENT_PORT}; "
-                 f"{'new' if started else 'already running'})")
+                 f"{'new' if agent_started else 'already running'})")
         self._check_isolation()
         # base driver: need a real /cmd_vel subscriber + live odometry
         if not self._wait_status(lambda: self.subs >= 1 and self.have_odom, 4.0):
@@ -223,45 +244,47 @@ class RoverLink:
                 raise RoverLinkError("rover base driver not running (/cmd_vel has no "
                                      "subscriber) and --no-bringup was given")
             self._start_bringup()
-        want_rf2o = _odom_source(self.fusion_cfg) == "rf2o"
-        if want_rf2o:
+        wants_rf2o = _odom_source(self.fusion_cfg) == "rf2o"
+        if wants_rf2o:
             self._wait_status(lambda: self.have_rf2o, 4.0)
-        self.odom_src = "odom2" if (want_rf2o and self.have_rf2o) else "odom"
+        self.odom_src = "odom2" if (wants_rf2o and self.have_rf2o) else "odom"
         self._wait_status(lambda: self.have_gyro and self.have_scan, 3.0)
         self.log(f"[rover] base ready: /cmd_vel subs={self.subs}, battery {self.voltage:.2f} V, "
                  f"odometry for fusion = {'rf2o lidar' if self.odom_src == 'odom2' else 'wheel'}"
-                 f"{'' if self.odom_src == 'odom2' or not want_rf2o else ' (rf2o not publishing!)'}"
+                 f"{'' if self.odom_src == 'odom2' or not wants_rf2o else ' (rf2o not publishing!)'}"
                  f", gyro {'yes' if self.have_gyro else 'NO'}, lidar {'yes' if self.have_scan else 'NO'}")
 
+    # Offline test mode (host 'local'): run the agent on this machine over stdio.
     def _open_local(self, ready_timeout):
-        proc = subprocess.Popen([sys.executable, "-u", str(HERE / "rover_agent.py")],
+        agent_process = subprocess.Popen([sys.executable, "-u", str(HERE / "rover_agent.py")],
                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, bufsize=1,
                                 start_new_session=True)
-        ready = threading.Event()
-        self.proc = proc
-        threading.Thread(target=self._reader, args=(proc, ready), daemon=True).start()
-        if not ready.wait(ready_timeout):
+        ready_event = threading.Event()
+        self.proc = agent_process
+        threading.Thread(target=self._reader, args=(agent_process, ready_event), daemon=True).start()
+        if not ready_event.wait(ready_timeout):
             raise RoverLinkError("local agent did not start")
         self._alive = self._up = True
         threading.Thread(target=self._heartbeat, daemon=True).start()
         if not self._wait_status(lambda: self.subs >= 1 and self.have_odom, 15.0):
             raise RoverLinkError("local agent: no /cmd_vel subscriber or odom (fake rover?)")
         self._wait_status(lambda: self.have_rf2o and self.have_gyro and self.have_scan, 4.0)
-        want = _odom_source(self.fusion_cfg) == "rf2o"
-        self.odom_src = "odom2" if (want and self.have_rf2o) else "odom"
+        wants_rf2o = _odom_source(self.fusion_cfg) == "rf2o"
+        self.odom_src = "odom2" if (wants_rf2o and self.have_rf2o) else "odom"
         self.log(f"[rover] local agent ready (odometry {self.odom_src})")
 
+    # Safety: refuse to run unless the rover's ROS is local-only (see docstring).
     def _check_isolation(self):
         """The rover's ROS must be private to the Jetson. If it were networked on the
         desktop's domain, the Isaac sim's /cmd_vel (published during every sim
         evaluation) would ALSO drive the physical rover."""
-        env = self.rosenv or {}
-        isolated = env.get("localhost_only") == "1" and not env.get("discovery_server")
-        if not isolated and not os.environ.get("LOOP_ALLOW_NETWORKED_ROVER"):
+        rover_ros_env = self.rosenv or {}
+        ros_isolated = rover_ros_env.get("localhost_only") == "1" and not rover_ros_env.get("discovery_server")
+        if not ros_isolated and not os.environ.get("LOOP_ALLOW_NETWORKED_ROVER"):
             self.close(stop_bringup=False)
             raise RoverLinkError(
-                f"rover ROS is not isolated ({env}): Isaac's /cmd_vel could drive the real "
+                f"rover ROS is not isolated ({rover_ros_env}): Isaac's /cmd_vel could drive the real "
                 "rover. Set ROS_LOCALHOST_ONLY=1 / unset ROS_DISCOVERY_SERVER on the rover "
                 "(rover_nav/local_ros_env.sh), or export LOOP_ALLOW_NETWORKED_ROVER=1 if the "
                 "rover is on a different ROS_DOMAIN_ID than the desktop.")
@@ -273,6 +296,7 @@ class RoverLink:
         return self.subs >= 1
 
     # ---------------- reconnect ----------------
+    # Reader thread hit end of stream: mark the link down and start reconnecting.
     def _on_transport_lost(self, proc):
         if self._closing or proc is not self.proc:
             return
@@ -283,28 +307,30 @@ class RoverLink:
                  f"finishes on the rover)")
         threading.Thread(target=self._reconnect_loop, daemon=True).start()
 
+    # Retry every route every 3 s until reconnect_timeout (re-staging the agent every
+    # third round in case the rover rebooted); posts link_up / eof events.
     def _reconnect_loop(self):
         if not self._reconnecting.acquire(blocking=False):
             return
         try:
-            t0 = time.time()
-            deadline = t0 + self.reconnect_timeout
-            rounds = 0
+            drop_time = time.time()
+            deadline = drop_time + self.reconnect_timeout
+            round_count = 0
             while not self._closing and time.time() < deadline:
-                order = [self.host] + [h for h in self.hosts if h != self.host]
-                for h in order:
+                routes_in_order = [self.host] + [route for route in self.hosts if route != self.host]
+                for route in routes_in_order:
                     if self._closing:
                         return
                     try:
-                        if rounds % 3 == 2:          # agent itself gone? (rover rebooted)
-                            self._ensure_agent(h)
-                        self._connect(h)
-                        self.log(f"[rover] link back via {h} after {time.time() - t0:.1f}s")
+                        if round_count % 3 == 2:          # agent itself gone? (rover rebooted)
+                            self._ensure_agent(route)
+                        self._connect(route)
+                        self.log(f"[rover] link back via {route} after {time.time() - drop_time:.1f}s")
                         self.events.put((time.time(), "link_up", []))
                         return
                     except (RoverLinkError, subprocess.TimeoutExpired, OSError):
                         continue
-                rounds += 1
+                round_count += 1
                 time.sleep(3.0)
             if not self._closing:
                 self._alive = False
@@ -363,31 +389,35 @@ class RoverLink:
         self._start_bringup(timeout)
         self.log(f"[rover] base driver back: /cmd_vel subs={self.subs}, battery {self.voltage:.2f} V")
 
+    # Start ~/rover_nav/start_bringup.sh detached on the rover and wait until /cmd_vel
+    # has a subscriber and odometry flows.
     def _start_bringup(self, timeout=90.0):
         self.log("[rover] base driver not running -> starting start_bringup.sh (detached on "
                  "the rover: survives network drops)")
-        r = self._ssh(f"mkdir -p {REMOTE_DIR}; setsid nohup bash ~/rover_nav/start_bringup.sh "
+        ssh_result = self._ssh(f"mkdir -p {REMOTE_DIR}; setsid nohup bash ~/rover_nav/start_bringup.sh "
                       f"> {REMOTE_DIR}/bringup.log 2>&1 < /dev/null & echo $!", timeout=40)
         try:
-            self.bringup_pid = int(r.stdout.strip().splitlines()[-1])
+            self.bringup_pid = int(ssh_result.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
-            raise RoverLinkError(f"could not start the base driver: {r.stderr.strip()[:200]}")
+            raise RoverLinkError(f"could not start the base driver: {ssh_result.stderr.strip()[:200]}")
         if not self._wait_status(lambda: self.subs >= 1 and self.have_odom, timeout):
-            tail = self._ssh(f"tail -5 {REMOTE_DIR}/bringup.log", timeout=20).stdout
+            bringup_log_tail = self._ssh(f"tail -5 {REMOTE_DIR}/bringup.log", timeout=20).stdout
             raise RoverLinkError(f"base driver did not come up in {timeout:.0f}s "
-                                 f"(subs={self.subs}, odom={self.have_odom}): {tail.strip()}")
+                                 f"(subs={self.subs}, odom={self.have_odom}): {bringup_log_tail.strip()}")
 
+    # Interrupt (then terminate) the base driver's process group; optionally run
+    # stop_all.sh for any other stack.
     def _stop_bringup_remote(self, all_stacks=False):
         """Stop the base driver we started (its process group); all_stacks: whatever runs."""
-        cmd = []
+        remote_commands = []
         if self.bringup_pid:
-            cmd.append(f"kill -INT -{self.bringup_pid} 2>/dev/null; sleep 3; "
+            remote_commands.append(f"kill -INT -{self.bringup_pid} 2>/dev/null; sleep 3; "
                        f"kill -TERM -{self.bringup_pid} 2>/dev/null")
         if all_stacks:
-            cmd.append("bash ~/rover_nav/stop_all.sh >/dev/null 2>&1")
-        if cmd:
+            remote_commands.append("bash ~/rover_nav/stop_all.sh >/dev/null 2>&1")
+        if remote_commands:
             try:
-                self._ssh("; ".join(cmd) + "; true", timeout=40)
+                self._ssh("; ".join(remote_commands) + "; true", timeout=40)
             except subprocess.TimeoutExpired:
                 pass
         self.bringup_pid = None
@@ -431,103 +461,108 @@ class RoverLink:
             self.logfile = None
 
     # ---------------- io ----------------
+    # Write one command line to the agent (RoverLinkDown if the link is reconnecting).
     def _send(self, line):
-        proc = self.proc
-        if proc is None or proc.poll() is not None or not self._up:
+        transport = self.proc
+        if transport is None or transport.poll() is not None or not self._up:
             if self._alive:
                 raise RoverLinkDown("rover link is down (reconnecting)")
             raise RoverLinkError("rover agent is not running")
         with self._wlock:
             try:
-                proc.stdin.write(line + "\n")
-                proc.stdin.flush()
+                transport.stdin.write(line + "\n")
+                transport.stdin.flush()
             except (BrokenPipeError, OSError, ValueError):
                 raise RoverLinkDown("rover link is down (reconnecting)")
 
+    # Reader thread: parse every agent line. Telemetry (odom/odom2/gyro/scan/status/
+    # rosenv) updates state; 'resume N' announces N replayed backlog lines after a
+    # reconnect - those are logged and queued as events but don't update 'live' state;
+    # other known kinds go to the event queue with rover times mapped to the desktop clock.
     def _reader(self, proc, ready):
-        replay = 0
-        for raw in proc.stdout:
-            now = time.time()
-            self.last_rx = now
-            line = raw.strip()
-            parts = line.split()
-            if not parts:
+        replay_left = 0
+        for raw_line in proc.stdout:
+            arrival_time = time.time()
+            self.last_rx = arrival_time
+            text_line = raw_line.strip()
+            fields = text_line.split()
+            if not fields:
                 continue
-            kind = parts[0]
-            live = replay == 0
-            if not live:
-                replay -= 1
-            if kind == "resume" and len(parts) == 2:
-                replay = int(parts[1])
-                if replay:
-                    self.log(f"[rover] replaying {replay} lines buffered while the link was down")
+            message_kind = fields[0]
+            is_live = replay_left == 0
+            if not is_live:
+                replay_left -= 1
+            if message_kind == "resume" and len(fields) == 2:
+                replay_left = int(fields[1])
+                if replay_left:
+                    self.log(f"[rover] replaying {replay_left} lines buffered while the link was down")
                 continue
-            if kind == "dropped":
-                self.log(f"[rover] WARNING: the rover dropped {parts[1]} buffered lines")
+            if message_kind == "dropped":
+                self.log(f"[rover] WARNING: the rover dropped {fields[1]} buffered lines")
                 continue
-            if kind in ("odom", "odom2") and len(parts) == 7:
-                stamp = float(parts[1])
-                if live:
-                    self.clock.observe(now, stamp)
-                t = self.clock.to_desktop(stamp, now)
-                vals = [float(v) for v in parts[2:]]
-                rec = (t, *vals)
-                if kind == "odom":
-                    if live:
-                        self.odom = rec
+            if message_kind in ("odom", "odom2") and len(fields) == 7:
+                rover_stamp = float(fields[1])
+                if is_live:
+                    self.clock.observe(arrival_time, rover_stamp)
+                desktop_time = self.clock.to_desktop(rover_stamp, arrival_time)
+                values = [float(field) for field in fields[2:]]
+                odom_record = (desktop_time, *values)
+                if message_kind == "odom":
+                    if is_live:
+                        self.odom = odom_record
                     if self.odom_log is not None:
-                        self.odom_log.append(rec)
-                elif live:
-                    self.odom2 = rec
-                if live and kind == self.odom_src:     # ONE source only (frames differ)
-                    self.integrator.odom(t, *vals[:3])
+                        self.odom_log.append(odom_record)
+                elif is_live:
+                    self.odom2 = odom_record
+                if is_live and message_kind == self.odom_src:     # ONE source only (frames differ)
+                    self.integrator.odom(desktop_time, *values[:3])
                 continue
-            if kind == "gyro" and len(parts) == 3:
-                stamp = float(parts[1])
-                if live:
-                    self.clock.observe(now, stamp)
-                    self.integrator.gyro(self.clock.to_desktop(stamp, now), float(parts[2]))
+            if message_kind == "gyro" and len(fields) == 3:
+                rover_stamp = float(fields[1])
+                if is_live:
+                    self.clock.observe(arrival_time, rover_stamp)
+                    self.integrator.gyro(self.clock.to_desktop(rover_stamp, arrival_time), float(fields[2]))
                 continue
-            if kind == "scan" and len(parts) >= 5:
-                t = self.clock.to_desktop(float(parts[1]), now)
-                self._scans.put((t, float(parts[2]), float(parts[3]),
-                                 [int(v) / 1000.0 for v in parts[4:]]))
+            if message_kind == "scan" and len(fields) >= 5:
+                desktop_time = self.clock.to_desktop(float(fields[1]), arrival_time)
+                self._scans.put((desktop_time, float(fields[2]), float(fields[3]),
+                                 [int(field) / 1000.0 for field in fields[4:]]))
                 continue
-            if kind == "status" and len(parts) >= 4:
-                if live:
-                    self.subs, self.have_odom = int(parts[1]), parts[2] == "1"
-                    self.voltage, self.status_t = float(parts[3]), now
-                    if len(parts) >= 8:
-                        self.have_rf2o, self.have_gyro = parts[4] == "1", parts[5] == "1"
-                        self.have_scan, self.gyro_bias = parts[6] == "1", float(parts[7])
+            if message_kind == "status" and len(fields) >= 4:
+                if is_live:
+                    self.subs, self.have_odom = int(fields[1]), fields[2] == "1"
+                    self.voltage, self.status_t = float(fields[3]), arrival_time
+                    if len(fields) >= 8:
+                        self.have_rf2o, self.have_gyro = fields[4] == "1", fields[5] == "1"
+                        self.have_scan, self.gyro_bias = fields[6] == "1", float(fields[7])
                 continue
-            if kind == "rosenv" and len(parts) == 4:
-                self.rosenv = {"localhost_only": parts[1], "domain": parts[2],
-                               "discovery_server": parts[3] == "1"}
+            if message_kind == "rosenv" and len(fields) == 4:
+                self.rosenv = {"localhost_only": fields[1], "domain": fields[2],
+                               "discovery_server": fields[3] == "1"}
                 continue
-            if kind == "guard_stop":
-                self.guard_events.append((now, float(parts[1])))
-            if kind == "pong":
-                self.last_pong = now
+            if message_kind == "guard_stop":
+                self.guard_events.append((arrival_time, float(fields[1])))
+            if message_kind == "pong":
+                self.last_pong = arrival_time
                 continue
             if self.logfile:
-                self.logfile.write(f"{now:.3f} {line}{'' if live else '  (replayed)'}\n")
+                self.logfile.write(f"{arrival_time:.3f} {text_line}{'' if is_live else '  (replayed)'}\n")
                 self.logfile.flush()
-            if kind == "ready":
+            if message_kind == "ready":
                 ready.set()
                 continue
-            if kind in EVENT_KINDS:
-                t = now
-                idx = TIMED_EVENTS.get(kind)
-                if idx is not None and len(parts) > idx + 1:
+            if message_kind in EVENT_KINDS:
+                desktop_time = arrival_time
+                time_field_index = TIMED_EVENTS.get(message_kind)
+                if time_field_index is not None and len(fields) > time_field_index + 1:
                     try:
-                        t = self.clock.to_desktop(float(parts[idx + 1]), now)
+                        desktop_time = self.clock.to_desktop(float(fields[time_field_index + 1]), arrival_time)
                     except ValueError:
                         pass
-                self.events.put((t, kind, parts[1:]))
+                self.events.put((desktop_time, message_kind, fields[1:]))
             else:                      # stray stderr (ROS warnings etc.)
-                if kind not in ("[INFO]",):
-                    self.log(f"[rover] {line}")
+                if message_kind not in ("[INFO]",):
+                    self.log(f"[rover] {text_line}")
         if self.local:
             if proc is self.proc and not self._closing:
                 self._alive = self._up = False
@@ -535,6 +570,7 @@ class RoverLink:
         else:
             self._on_transport_lost(proc)
 
+    # Ping every 0.25 s while alive (the agent zeroes velocity if pings stop).
     def _heartbeat(self):
         while self._alive:
             if getattr(self, "_hb_pause", False):
@@ -548,24 +584,26 @@ class RoverLink:
                 return
             time.sleep(0.25)
 
+    # Wait for one event kind from the queue (extends the wait while the link is down).
     def _wait_event(self, kind, timeout):
-        t_end = time.time() + timeout
-        while time.time() < t_end:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
             try:
-                t, k, args = self.events.get(timeout=0.2)
+                event_time, event_kind, args = self.events.get(timeout=0.2)
             except queue.Empty:
                 continue
-            if k == kind:
-                return t, args
-            if k == "eof":
+            if event_kind == kind:
+                return event_time, args
+            if event_kind == "eof":
                 raise RoverLinkError("rover agent exited / link gave up")
-            if k == "link_down":                 # wait for the replay instead of failing
-                t_end = max(t_end, time.time() + self.reconnect_timeout)
+            if event_kind == "link_down":                 # wait for the replay instead of failing
+                deadline = max(deadline, time.time() + self.reconnect_timeout)
         raise RoverLinkError(f"timed out waiting for '{kind}' from rover agent")
 
+    # Poll a condition on the parsed status until true or timeout.
     def _wait_status(self, cond, timeout):
-        t_end = time.time() + timeout
-        while time.time() < t_end:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
             if cond():
                 return True
             if not self._alive and not self.local:
@@ -580,8 +618,8 @@ class RoverLink:
     def rx_age(self):
         """Seconds since ANY line arrived from the agent (pongs come every 0.25 s), so a
         large value means the link is stalled even before ssh gives up (~15 s)."""
-        t = self.last_rx
-        return float("inf") if t is None else time.time() - t
+        last_rx_time = self.last_rx
+        return float("inf") if last_rx_time is None else time.time() - last_rx_time
 
     @property
     def alive(self):
@@ -594,6 +632,7 @@ class RoverLink:
     def link_up(self):
         return self._up
 
+    # Command a body twist: forward speed (m/s) and turn rate (rad/s).
     def velocity(self, lin, ang):
         self._send(f"v {float(lin):.4f} {float(ang):.4f}")
 
@@ -617,15 +656,15 @@ class RoverLink:
         while not self._scans.empty():
             self._scans.get_nowait()
         self._send(f"scan {int(n)}")
-        out, t_end = [], time.time() + timeout + 0.15 * n
-        while len(out) < n and time.time() < t_end:
+        received, deadline = [], time.time() + timeout + 0.15 * n
+        while len(received) < n and time.time() < deadline:
             try:
-                out.append(self._scans.get(timeout=0.2))
+                received.append(self._scans.get(timeout=0.2))
             except queue.Empty:
                 pass
-        if not out:
+        if not received:
             raise RoverLinkError("no lidar scans (is /scan publishing?)")
-        return out
+        return received
 
     def odometry_pose(self):
         """Latest integrated odometry pose (t, (x, y, yaw)) in the odom frame, or None."""
@@ -633,13 +672,16 @@ class RoverLink:
 
     def wait_link(self, timeout):
         """Block until the link is up again (True) or timeout (False)."""
-        t_end = time.time() + timeout
-        while time.time() < t_end and self._alive:
+        deadline = time.time() + timeout
+        while time.time() < deadline and self._alive:
             if self._up:
                 return True
             time.sleep(0.2)
         return self._up
 
+    # Upload a list of {linear, angular, duration} steps; the agent times them locally
+    # on the rover. Waits for seq_done, calling on_tick(elapsed) so the caller can abort
+    # (e.g. the rover left the workspace). Returns the sequence start in desktop time.
     def run_sequence(self, steps, on_tick=None, tick=0.02, extra_timeout=5.0):
         """Run steps on the rover (timed locally). Returns the desktop time of seq_start
         (the rover's own stamp mapped to the desktop clock).
@@ -652,39 +694,39 @@ class RoverLink:
         """
         while not self.events.empty():
             self.events.get_nowait()
-        clean = [{"linear": float(s.get("linear", 0)), "angular": float(s.get("angular", 0)),
-                  "duration": float(s.get("duration", 0))} for s in steps]
-        total = sum(s["duration"] for s in clean)
+        clean_steps = [{"linear": float(step.get("linear", 0)), "angular": float(step.get("angular", 0)),
+                  "duration": float(step.get("duration", 0))} for step in steps]
+        total_duration = sum(step["duration"] for step in clean_steps)
         if not self._up and not self.wait_link(self.reconnect_timeout):
             raise RoverLinkError("rover link down - could not start the sequence")
-        self._send("seq " + json.dumps(clean, separators=(",", ":")))
-        t_start, _ = self._wait_event("seq_start", 8.0)
-        t_end = t_start + total + extra_timeout
-        dropped = False
+        self._send("seq " + json.dumps(clean_steps, separators=(",", ":")))
+        seq_start_time, _ = self._wait_event("seq_start", 8.0)
+        deadline = seq_start_time + total_duration + extra_timeout
+        link_dropped = False
         while True:
             try:
-                t, k, args = self.events.get(timeout=tick)
-                if k == "seq_done":
-                    if dropped:
+                event_time, event_kind, args = self.events.get(timeout=tick)
+                if event_kind == "seq_done":
+                    if link_dropped:
                         self.log("[rover] trial finished on the rover during the dropout; "
                                  "its events arrived after reconnecting")
-                    return t_start
-                if k in ("seq_abort", "eof", "err"):
-                    raise RoverLinkError(f"sequence aborted by rover: {k} {' '.join(args)}")
-                if k == "link_down":
-                    dropped = True
-                    t_end = max(t_end, time.time() + self.reconnect_timeout)
+                    return seq_start_time
+                if event_kind in ("seq_abort", "eof", "err"):
+                    raise RoverLinkError(f"sequence aborted by rover: {event_kind} {' '.join(args)}")
+                if event_kind == "link_down":
+                    link_dropped = True
+                    deadline = max(deadline, time.time() + self.reconnect_timeout)
             except queue.Empty:
                 pass
             if on_tick is not None and self._up:
-                why = on_tick(time.time() - t_start)
-                if why:
+                abort_reason = on_tick(time.time() - seq_start_time)
+                if abort_reason:
                     try:
                         self.stop()
                     except RoverLinkDown:
                         pass
-                    raise RoverLinkError(f"sequence aborted: {why}")
-            if time.time() > t_end:
+                    raise RoverLinkError(f"sequence aborted: {abort_reason}")
+            if time.time() > deadline:
                 try:
                     self.stop()
                 except RoverLinkDown:
@@ -692,6 +734,7 @@ class RoverLink:
                 raise RoverLinkError("sequence never reported done")
 
 
+# Terminate a child's whole process group (SIGTERM, then SIGKILL after 3 s).
 def _kill(proc):
     if proc is None or proc.poll() is not None:
         return
@@ -708,59 +751,62 @@ def _kill(proc):
             pass
 
 
+# Measure ping round trips over the live link for `seconds` (median / p90 / max).
 def link_test(link, seconds=20.0):
     """Ping the agent and report round-trip times (heartbeat replies) on the live link."""
-    rtts, lost = [], 0
+    round_trips_ms, lost_pings = [], 0
     link._hb_pause = True                        # only our pings in flight
-    t_end = time.time() + seconds
-    while time.time() < t_end:
+    deadline = time.time() + seconds
+    while time.time() < deadline:
         time.sleep(0.3)                          # let the heartbeat's own pong pass
-        before = link.last_pong
-        s = time.time()
+        pong_before = link.last_pong
+        sent_time = time.time()
         link._send("ping")
-        while time.time() - s < 2.0 and link.last_pong == before:
+        while time.time() - sent_time < 2.0 and link.last_pong == pong_before:
             time.sleep(0.002)
-        if link.last_pong != before:
-            rtts.append((link.last_pong - s) * 1000)
+        if link.last_pong != pong_before:
+            round_trips_ms.append((link.last_pong - sent_time) * 1000)
         else:
-            lost += 1
+            lost_pings += 1
     link._hb_pause = False
-    rtts.sort()
-    if not rtts:
+    round_trips_ms.sort()
+    if not round_trips_ms:
         return "no replies"
-    q = lambda f: rtts[min(len(rtts) - 1, int(f * len(rtts)))]   # noqa: E731
-    return (f"{len(rtts)} pings ({lost} lost) via {link.host}: median {q(0.5):.0f} ms, p90 {q(0.9):.0f} ms, "
-            f"max {rtts[-1]:.0f} ms; clock offset rover->desktop "
+    percentile = lambda f: round_trips_ms[min(len(round_trips_ms) - 1, int(f * len(round_trips_ms)))]   # noqa: E731
+    return (f"{len(round_trips_ms)} pings ({lost_pings} lost) via {link.host}: median {percentile(0.5):.0f} ms, p90 {percentile(0.9):.0f} ms, "
+            f"max {round_trips_ms[-1]:.0f} ms; clock offset rover->desktop "
             f"{(link.clock.offset or 0) * 1000:+.0f} ms")
 
 
+# --check: connect, print one status line (route, subscribers, odometry, battery,
+# sensors) and disconnect. surface_demo.py parses the 'battery=' field of this line.
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description=__doc__,
+    parser = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="connect, print status, exit")
-    ap.add_argument("--link-test", action="store_true",
+    parser.add_argument("--check", action="store_true", help="connect, print status, exit")
+    parser.add_argument("--link-test", action="store_true",
                     help="also measure round trips on the agent link for 20 s")
-    ap.add_argument("--keep-bringup", action="store_true",
+    parser.add_argument("--keep-bringup", action="store_true",
                     help="leave a base driver we started running on exit")
-    ap.add_argument("--no-bringup", action="store_true")
-    ap.add_argument("--host", default=ROVER, help="route(s) to try, comma list of ssh aliases")
-    args = ap.parse_args()
-    link = RoverLink(host=args.host, start_bringup=not args.no_bringup)
+    parser.add_argument("--no-bringup", action="store_true")
+    parser.add_argument("--host", default=ROVER, help="route(s) to try, comma list of ssh aliases")
+    args = parser.parse_args()
+    rover_link = RoverLink(host=args.host, start_bringup=not args.no_bringup)
     try:
-        link.open()
-        t0 = time.time()
-        while time.time() - t0 < 3:
+        rover_link.open()
+        start_time = time.time()
+        while time.time() - start_time < 3:
             time.sleep(0.5)
-        od = link.odom
-        print(f"route={link.host} subs={link.subs} "
-              f"odom={'%.3f,%.3f,%.1fdeg' % (od[1], od[2], od[3]*57.3) if od else None}"
-              f" battery={link.voltage:.2f}V rf2o={link.have_rf2o} gyro={link.have_gyro} "
-              f"(bias {link.gyro_bias:+.4f}) scan={link.have_scan}")
+        wheel_odom = rover_link.odom
+        print(f"route={rover_link.host} subs={rover_link.subs} "
+              f"odom={'%.3f,%.3f,%.1fdeg' % (wheel_odom[1], wheel_odom[2], wheel_odom[3]*57.3) if wheel_odom else None}"
+              f" battery={rover_link.voltage:.2f}V rf2o={rover_link.have_rf2o} gyro={rover_link.have_gyro} "
+              f"(bias {rover_link.gyro_bias:+.4f}) scan={rover_link.have_scan}")
         if args.link_test:
-            print(link_test(link))
+            print(link_test(rover_link))
     finally:
-        link.close(stop_bringup=not args.keep_bringup)
+        rover_link.close(stop_bringup=not args.keep_bringup)
     return 0
 
 

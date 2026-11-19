@@ -92,6 +92,7 @@ FRICTION_PAIRS = (("corner_mu_static", "corner_mu_dynamic"),
                   ("floor_mu_static", "floor_mu_dynamic"))
 
 
+# Literature friction band {'static': (lo, hi), 'dynamic': (lo, hi)} for a surface.
 def surface_band(surface: str | None) -> dict:
     """{'static': (lo, hi), 'dynamic': (lo, hi)} for a surface name (aliases ok); the
     all-materials envelope when the surface is unknown or None."""
@@ -102,24 +103,26 @@ def surface_band(surface: str | None) -> dict:
     return FRICTION_ENVELOPE
 
 
+# Floor-friction starting values: the middle of the surface's bands.
 def surface_start(surface: str | None) -> dict:
     """Band midpoints: where a floor-friction search starts for this surface."""
-    b = surface_band(surface)
-    return {"floor_mu_static": round(sum(b["static"]) / 2, 4),
-            "floor_mu_dynamic": round(sum(b["dynamic"]) / 2, 4)}
+    band = surface_band(surface)
+    return {"floor_mu_static": round(sum(band["static"]) / 2, 4),
+            "floor_mu_dynamic": round(sum(band["dynamic"]) / 2, 4)}
 
 
+# Raise unless both floor coefficients are inside the band and dynamic <= static.
 def validate_floor(mu_static, mu_dynamic, surface: str | None = None) -> None:
     """Raise ValueError unless the floor coefficients lie inside the surface's literature band
     and dynamic <= static (kinetic friction never exceeds static friction)."""
-    b = surface_band(surface)
-    for name, val in (("static", mu_static), ("dynamic", mu_dynamic)):
-        if val is None:
+    band = surface_band(surface)
+    for name, value in (("static", mu_static), ("dynamic", mu_dynamic)):
+        if value is None:
             continue
-        lo, hi = b[name]
-        if not math.isfinite(float(val)) or not (lo - 1e-9 <= float(val) <= hi + 1e-9):
-            raise ValueError(f"floor {name} friction {val} is outside the {surface or 'all-materials'} "
-                             f"rubber-on-floor band [{lo}, {hi}] (calib_params.SURFACE_FRICTION)")
+        low, high = band[name]
+        if not math.isfinite(float(value)) or not (low - 1e-9 <= float(value) <= high + 1e-9):
+            raise ValueError(f"floor {name} friction {value} is outside the {surface or 'all-materials'} "
+                             f"rubber-on-floor band [{low}, {high}] (calib_params.SURFACE_FRICTION)")
     if mu_static is not None and mu_dynamic is not None and float(mu_dynamic) > float(mu_static) + 1e-9:
         raise ValueError(f"floor dynamic friction {mu_dynamic} exceeds static {mu_static}")
 
@@ -247,85 +250,94 @@ for _s in SCHEMA:   # import-time guard: nothing may target a geometry attribute
             raise RuntimeError(f"schema key {_s['key']} targets geometry attribute {_a}")
 
 
+# Optimisable keys of one calibrate.py stage.
 def stage_keys(stage: int) -> list[str]:
     """Optimisable parameter keys belonging to a calibration stage (calibrate.STAGES)."""
-    return [s["key"] for s in SCHEMA
-            if s["stage"] == stage and s["lo"] is not None and s["hi"] is not None]
+    return [schema_entry["key"] for schema_entry in SCHEMA
+            if schema_entry["stage"] == stage and schema_entry["lo"] is not None and schema_entry["hi"] is not None]
 
 
+# Search bounds of a key (floor friction: the surface band).
 def bounds(key: str, surface: str | None = None) -> tuple[float, float]:
     """(lo, hi) search bounds; floor friction uses the surface's literature band."""
-    s = SCHEMA_BY_KEY[key]
-    if s.get("surface_bounded"):
+    schema_entry = SCHEMA_BY_KEY[key]
+    if schema_entry.get("surface_bounded"):
         return surface_band(surface)["static" if key.endswith("static") else "dynamic"]
-    return s["lo"], s["hi"]
+    return schema_entry["lo"], schema_entry["hi"]
 
 
+# Parameter class: locked / measured / fixed / calibrated.
 def classify(key: str) -> str:
     """'locked' | 'measured' | 'fixed' | 'calibrated' — for display and to enforce the freeze."""
-    s = SCHEMA_BY_KEY.get(key, {})
+    schema_entry = SCHEMA_BY_KEY.get(key, {})
     for flag in ("locked", "measured", "fixed"):
-        if s.get(flag):
+        if schema_entry.get(flag):
             return flag
     return "calibrated"
 
 
 # ── yaml <-> flat round-trip (pure Python) ───────────────────────────────────
+# Nested sim_calibration.yaml -> flat {key: value} (unknown keys ignored).
 def flatten(cfg: dict) -> dict:
     """Nested sim_calibration.yaml dict -> {canonical_key: value} for keys we know."""
     flat = {}
-    for s in SCHEMA:
+    for schema_entry in SCHEMA:
         node = cfg
-        ok = True
-        for k in s["yaml"]:
-            if isinstance(node, dict) and k in node:
-                node = node[k]
+        found = True
+        for yaml_key in schema_entry["yaml"]:
+            if isinstance(node, dict) and yaml_key in node:
+                node = node[yaml_key]
             else:
-                ok = False
+                found = False
                 break
-        if ok and not isinstance(node, dict):
-            flat[s["key"]] = node
+        if found and not isinstance(node, dict):
+            flat[schema_entry["key"]] = node
     return flat
 
 
+# Flat {key: value} -> nested sim_calibration.yaml layout (inverse of flatten).
 def nest(flat: dict) -> dict:
     """{canonical_key: value} -> nested dict shaped like sim_calibration.yaml."""
-    out: dict = {}
-    for key, val in flat.items():
-        s = SCHEMA_BY_KEY.get(key)
-        if not s:
+    nested: dict = {}
+    for key, value in flat.items():
+        schema_entry = SCHEMA_BY_KEY.get(key)
+        if not schema_entry:
             continue
-        node = out
-        for k in s["yaml"][:-1]:
-            node = node.setdefault(k, {})
-        node[s["yaml"][-1]] = val
-    return out
+        node = nested
+        for yaml_key in schema_entry["yaml"][:-1]:
+            node = node.setdefault(yaml_key, {})
+        node[schema_entry["yaml"][-1]] = value
+    return nested
 
 
+# Schema default of every parameter.
 def defaults() -> dict:
     """{key: default} for every parameter."""
-    return {s["key"]: s["default"] for s in SCHEMA}
+    return {schema_entry["key"]: schema_entry["default"] for schema_entry in SCHEMA}
 
 
+# Raise ValueError for an impossible parameter set (see docstring).
 def validate(flat: dict, surface: str | None = None) -> None:
     """Check friction coefficients/order, floor bands and paired linear ramp limits."""
     validate_floor(flat.get("floor_mu_static"), flat.get("floor_mu_dynamic"), surface)
     for static, dynamic in FRICTION_PAIRS[:2]:
         if static not in flat and dynamic not in flat:
             continue
-        s = float(flat.get(static, SCHEMA_BY_KEY[static]["default"]))
-        d = float(flat.get(dynamic, SCHEMA_BY_KEY[dynamic]["default"]))
-        if not all(math.isfinite(v) and v >= 0 for v in (s, d)):
+        static_mu = float(flat.get(static, SCHEMA_BY_KEY[static]["default"]))
+        dynamic_mu = float(flat.get(dynamic, SCHEMA_BY_KEY[dynamic]["default"]))
+        if not all(math.isfinite(value) and value >= 0 for value in (static_mu, dynamic_mu)):
             raise ValueError(f"{static} and {dynamic} must be finite and nonnegative")
-        if d > s + 1e-9:
-            raise ValueError(f"{dynamic} {d} exceeds {static} {s}")
-    acc, dec = float(flat.get("max_acceleration") or 0), float(flat.get("max_deceleration") or 0)
-    if (acc > 0) != (dec > 0):
+        if dynamic_mu > static_mu + 1e-9:
+            raise ValueError(f"{dynamic} {dynamic_mu} exceeds {static} {static_mu}")
+    max_accel, max_decel = float(flat.get("max_acceleration") or 0), float(flat.get("max_deceleration") or 0)
+    if (max_accel > 0) != (max_decel > 0):
         raise ValueError("max_acceleration and max_deceleration must both be set (> 0) or both "
                          "unset: the DifferentialController ignores linear limits otherwise")
 
 
 # ── authoring onto a USD stage (needs pxr; imported lazily) ───────────────────
+# Author one USD attribute (create it if create_type is given) and record the change;
+# refuses geometry attributes; skips float32-noise-sized differences.
 def _set_scalar(stage, prim_path, attr_name, value, changes, create_type=None):
     if attr_name.startswith(GEOMETRY_ATTR_PREFIXES):
         raise ValueError(f"refusing to author geometry attribute {prim_path}.{attr_name}")
@@ -340,35 +352,37 @@ def _set_scalar(stage, prim_path, attr_name, value, changes, create_type=None):
         changes.append(("WARN missing attr", prim_path, attr_name, None, None))
         return
     before = attr.Get()
-    new = float(value) if (isinstance(before, float) or before is None) else type(before)(value)
+    new_value = float(value) if (isinstance(before, float) or before is None) else type(before)(value)
     if isinstance(before, float) and before is not None and \
-            abs(before - new) <= max(1e-9, abs(before) * 1e-6):
+            abs(before - new_value) <= max(1e-9, abs(before) * 1e-6):
         return  # float32 noise -> no-op (keeps re-bake idempotent)
-    if before == new:
+    if before == new_value:
         return
-    changes.append(("set", prim_path, attr_name, before, new))
-    attr.Set(new)
+    changes.append(("set", prim_path, attr_name, before, new_value))
+    attr.Set(new_value)
 
 
+# Set a body's mass and scale its inertia by the same factor (see docstring).
 def _set_mass_keep_density(stage, prim_path, mass, changes):
     """Author a body's mass and scale its authored diagonalInertia by the same factor, so a
     measured mass never leaves an inconsistent inertia behind (the 2026-10-14 wheel bug)."""
     from pxr import Gf
     prim = stage.GetPrimAtPath(prim_path)
-    m_attr = prim.GetAttribute("physics:mass") if prim and prim.IsValid() else None
-    old = m_attr.Get() if m_attr else None
+    mass_attr = prim.GetAttribute("physics:mass") if prim and prim.IsValid() else None
+    old_mass = mass_attr.Get() if mass_attr else None
     _set_scalar(stage, prim_path, "physics:mass", mass, changes)
-    if not old or not m_attr or abs(m_attr.Get() - old) <= max(1e-9, abs(old) * 1e-6):
+    if not old_mass or not mass_attr or abs(mass_attr.Get() - old_mass) <= max(1e-9, abs(old_mass) * 1e-6):
         return
-    i_attr = prim.GetAttribute("physics:diagonalInertia")
-    inertia = i_attr.Get() if i_attr else None
-    if inertia is not None and any(v > 0 for v in inertia):
-        k = float(m_attr.Get()) / float(old)
-        new = Gf.Vec3f(*(float(v) * k for v in inertia))
-        i_attr.Set(new)
-        changes.append(("set", prim_path, "physics:diagonalInertia", inertia, new))
+    inertia_attr = prim.GetAttribute("physics:diagonalInertia")
+    inertia = inertia_attr.Get() if inertia_attr else None
+    if inertia is not None and any(component > 0 for component in inertia):
+        scale = float(mass_attr.Get()) / float(old_mass)
+        new_inertia = Gf.Vec3f(*(float(component) * scale for component in inertia))
+        inertia_attr.Set(new_inertia)
+        changes.append(("set", prim_path, "physics:diagonalInertia", inertia, new_inertia))
 
 
+# Drive the DifferentialController from the playback tick (see docstring).
 def enable_tick_dt(stage, changes) -> None:
     """Run the DifferentialController every playback tick with dt = tick deltaSeconds.
 
@@ -382,29 +396,30 @@ def enable_tick_dt(stage, changes) -> None:
     edits the USD connections, which a later stage load picks up.
     """
     from pxr import Sdf
-    diff, tick = stage.GetPrimAtPath(DIFF), stage.GetPrimAtPath(TICK)
-    if not diff or not diff.IsValid() or not tick or not tick.IsValid():
+    diff_prim, tick_prim = stage.GetPrimAtPath(DIFF), stage.GetPrimAtPath(TICK)
+    if not diff_prim or not diff_prim.IsValid() or not tick_prim or not tick_prim.IsValid():
         changes.append(("WARN missing prim", DIFF, "tick/dt rewire", None, None))
         return
     try:
         import omni.graph.core as og
     except ImportError:
         og = None
-    for name, src in (("inputs:execIn", f"{TICK}.outputs:tick"),
+    for name, source in (("inputs:execIn", f"{TICK}.outputs:tick"),
                       ("inputs:dt", f"{TICK}.outputs:deltaSeconds")):
-        attr = diff.GetAttribute(name)
-        before = [str(c) for c in attr.GetConnections()]
-        if before == [src]:
+        attr = diff_prim.GetAttribute(name)
+        before = [str(connection) for connection in attr.GetConnections()]
+        if before == [source]:
             continue
         if og is not None:
-            for old in before:
-                og.Controller.disconnect(old, f"{DIFF}.{name}")
-            og.Controller.connect(src, f"{DIFF}.{name}")
+            for old_source in before:
+                og.Controller.disconnect(old_source, f"{DIFF}.{name}")
+            og.Controller.connect(source, f"{DIFF}.{name}")
         else:
-            attr.SetConnections([Sdf.Path(src)])
-        changes.append(("connect", DIFF, name, before, src))
+            attr.SetConnections([Sdf.Path(source)])
+        changes.append(("connect", DIFF, name, before, source))
 
 
+# Path of the ground collider prim to bind the floor material to (see docstring).
 def find_ground_collider(stage) -> str | None:
     """Best-effort path to the ground collider to bind a floor material onto.
 
@@ -414,16 +429,17 @@ def find_ground_collider(stage) -> str | None:
     from pxr import UsdPhysics
     candidates = []
     for prim in stage.Traverse():
-        p = str(prim.GetPath())
-        if p.endswith("GroundPlane/CollisionPlane") or p.endswith("/CollisionPlane"):
-            return p
-        if "groundPlane" in p or "defaultGroundPlane" in p or p.endswith("/GroundPlane"):
-            candidates.append(p)
+        path = str(prim.GetPath())
+        if path.endswith("GroundPlane/CollisionPlane") or path.endswith("/CollisionPlane"):
+            return path
+        if "groundPlane" in path or "defaultGroundPlane" in path or path.endswith("/GroundPlane"):
+            candidates.append(path)
         if prim.HasAPI(UsdPhysics.CollisionAPI) and prim.GetTypeName() == "Plane":
-            candidates.append(p)
+            candidates.append(path)
     return candidates[0] if candidates else None
 
 
+# Create/set/bind the floor physics material (see docstring).
 def author_floor(stage, mu_dynamic=None, mu_static=None, combine_mode=None,
                  ground_path=None, verbose=True, surface=None) -> list:
     """Create /World/Physics_Materials/floor (if missing), set its friction, and bind it
@@ -451,30 +467,31 @@ def author_floor(stage, mu_dynamic=None, mu_static=None, combine_mode=None,
     _set_scalar(stage, MAT_FLOOR, "physics:staticFriction", mu_static, changes,
                 create_type=Sdf.ValueTypeNames.Float)
     if combine_mode is not None:
-        for mp in (MAT_FLOOR, MAT_CORNER, MAT_MIDDLE):
-            prim = stage.GetPrimAtPath(mp)
+        for material_path in (MAT_FLOOR, MAT_CORNER, MAT_MIDDLE):
+            prim = stage.GetPrimAtPath(material_path)
             if prim and prim.IsValid():
-                a = prim.GetAttribute("physxMaterial:frictionCombineMode")
-                if not a or not a.IsValid():
-                    a = prim.CreateAttribute("physxMaterial:frictionCombineMode",
+                combine_attr = prim.GetAttribute("physxMaterial:frictionCombineMode")
+                if not combine_attr or not combine_attr.IsValid():
+                    combine_attr = prim.CreateAttribute("physxMaterial:frictionCombineMode",
                                              Sdf.ValueTypeNames.Token)
-                if a.Get() != combine_mode:
-                    a.Set(combine_mode)
-                    changes.append(("set", mp, "frictionCombineMode", None, combine_mode))
-    gp = ground_path or find_ground_collider(stage)
-    if gp:
-        ground = stage.GetPrimAtPath(gp)
+                if combine_attr.Get() != combine_mode:
+                    combine_attr.Set(combine_mode)
+                    changes.append(("set", material_path, "frictionCombineMode", None, combine_mode))
+    ground_prim_path = ground_path or find_ground_collider(stage)
+    if ground_prim_path:
+        ground = stage.GetPrimAtPath(ground_prim_path)
         if ground and ground.IsValid():
-            mat = UsdShade.Material(stage.GetPrimAtPath(MAT_FLOOR))
+            floor_material = UsdShade.Material(stage.GetPrimAtPath(MAT_FLOOR))
             UsdShade.MaterialBindingAPI.Apply(ground)
             UsdShade.MaterialBindingAPI(ground).Bind(
-                mat, UsdShade.Tokens.weakerThanDescendants, "physics")
-            changes.append(("bind-floor", gp, MAT_FLOOR, None, None))
+                floor_material, UsdShade.Tokens.weakerThanDescendants, "physics")
+            changes.append(("bind-floor", ground_prim_path, MAT_FLOOR, None, None))
     elif verbose:
         changes.append(("WARN no ground collider found to bind floor", "", "", None, None))
     return changes
 
 
+# Author a whole calibration onto an open USD stage (see docstring).
 def apply_to_stage(stage, flat: dict, *, author_floor_material=True,
                    combine_mode=None, ground_path=None, verbose=True, surface=None) -> list:
     """Author a flat {key: value} calibration onto an open USD stage (in-memory; caller
@@ -508,11 +525,11 @@ def apply_to_stage(stage, flat: dict, *, author_floor_material=True,
                 _set_mass_keep_density(stage, prim_path, value, changes)
             continue
         create_type = (Sdf.ValueTypeNames.Float
-                       if any(a.startswith("physxRigidBody") for _, a in spec["targets"])
+                       if any(attribute.startswith("physxRigidBody") for _, attribute in spec["targets"])
                        else None)
         for prim_path, attr_name in spec["targets"]:
             _set_scalar(stage, prim_path, attr_name, value, changes, create_type=create_type)
-    if any(float(flat.get(k) or 0) > 0 for k in ACCEL_KEYS):
+    if any(float(flat.get(key) or 0) > 0 for key in ACCEL_KEYS):
         enable_tick_dt(stage, changes)
     if want_floor:
         changes += author_floor(stage, mu_dynamic=floor_mu_d, mu_static=floor_mu_s,

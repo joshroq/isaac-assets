@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "image_size": [
+    1280,
+    720
+  ],
+  "sticker_diameter_m": 0.01905,
+  "geometry_measured": true,
+  "projection_verified": true,
+  "reference_point": "chassis_center",
+  "sticker_height_m": 0.15875,
+  "camera_position_m": [
+    0.3161466093164941,
+    -0.15308137185726706,
+    1.6015814722369957
+  ],
+  "plane_H_img2m": null,
+  "min_area_px": 8,
+  "max_area_px": 2500,
+  "min_circularity": 0.45,
+  "max_candidates_per_color": 16,
+  "max_edge_error_m": 0.015,
+  "max_fit_error_m": 0.006,
+  "stickers": [
+    {
+      "name": "green",
+      "body_xy_m": [
+        0.0650875,
+        0.0508
+      ],
+      "hsv_ranges": [
+        {
+          "lower": [
+            73,
+            118,
+            120
+          ],
+          "upper": [
+            89,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "orange_red",
+      "body_xy_m": [
+        0.0650875,
+        -0.0508
+      ],
+      "hsv_ranges": [
+        {
+          "lower": [
+            0,
+            81,
+            134
+          ],
+          "upper": [
+            9,
+            255,
+            255
+          ]
+        },
+        {
+          "lower": [
+            173,
+            81,
+            134
+          ],
+          "upper": [
+            179,
+            255,
+            255
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pink",
+      "body_xy_m": [
+        -0.0650875,
+        0.0
+      ],
+      "hsv_ranges": [
+        {
+          "lower": [
+            155,
+            92,
+            131
+          ],
+          "upper": [
+            173,
+            255,
+            255
+          ]
+        }
+      ]
+    }
+  ],
+  "setup_points_px": [
+    [
+      801.0,
+      298.0
+    ],
+    [
+      854.0,
+      319.0
+    ],
+    [
+      797.0,
+      367.0
+    ]
+  ],
+  "note": "Measured body coordinates: +x forward, +y left, origin midway between middle-wheel hubs.",
+  "camera_position_source": "grid_homography_estimate"
+}
